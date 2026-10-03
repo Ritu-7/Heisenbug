@@ -1,0 +1,16 @@
+{
+  "slug": "ml-leakage-001",
+  "title": "Churn model scores 96% in testing, barely beats a coin flip in production",
+  "version": 1,
+  "track": "ml",
+  "difficulty": "medium",
+  "skills": ["data-leakage", "feature-engineering", "model-evaluation"],
+  "stack": "python-sklearn",
+  "entryFile": "src/train.py",
+  "language": "python",
+  "testFramework": "pytest",
+  "testCommand": "pytest --json-report --json-report-file=/dev/stdout -q",
+  "files": [
+    { "path": "src/train.py", "editable": true,  "label": "training pipeline" }
+  ]
+}

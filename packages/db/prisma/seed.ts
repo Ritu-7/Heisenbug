@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import fs from "fs";
 
 const prisma = new PrismaClient();
 
@@ -352,6 +353,65 @@ async function main() {
     },
   });
   console.log(`  ✓ Variant:        ${variant2.id}`);
+
+  // ── Seed problem 3: ml-leakage-001 ───────────────────────────────────────
+  const problem3 = await prisma.problem.upsert({
+    where: { slug: "ml-leakage-001" },
+    update: {},
+    create: {
+      slug: "ml-leakage-001",
+      title: "Churn model scores 96% in testing, barely beats a coin flip in production",
+      track: "ml",
+      difficulty: "medium",
+      estMinutes: 30,
+      skills: ["data-leakage", "feature-engineering", "model-evaluation"],
+      stack: "python-sklearn",
+    },
+  });
+  console.log(`  ✓ Problem: ${problem3.id} (${problem3.slug})`);
+
+  const descriptionMdMl = fs.readFileSync(
+    require("path").join(__dirname, "../../problems/ml-leakage-001/DESCRIPTION.md"),
+    "utf-8"
+  );
+
+  const existingVersion3 = await prisma.problemVersion.findUnique({
+    where: { problemId_version: { problemId: problem3.id, version: 1 } },
+  });
+
+  let version3;
+  if (existingVersion3) {
+    version3 = await prisma.problemVersion.update({
+      where: { id: existingVersion3.id },
+      data: { status: "PUBLISHED", descriptionMd: descriptionMdMl },
+    });
+  } else {
+    version3 = await prisma.problemVersion.create({
+      data: {
+        problemId: problem3.id,
+        version: 1,
+        status: "PUBLISHED",
+        descriptionMd: descriptionMdMl,
+        editorialMd: "",
+        solutionMd: "",
+      },
+    });
+  }
+  console.log(`  ✓ ProblemVersion: ${version3.id} (v${version3.version}, ${version3.status})`);
+
+  const variantId3 = `${version3.id}_default`;
+  const variant3 = await prisma.variant.upsert({
+    where: { id: variantId3 },
+    update: {},
+    create: {
+      id: variantId3,
+      versionId: version3.id,
+      paramsJson: {
+        variant: "default",
+      },
+    },
+  });
+  console.log(`  ✓ Variant:        ${variant3.id}`);
 
   console.log("\n✅ Seed complete.");
   console.log("\n📋 Test credentials:");

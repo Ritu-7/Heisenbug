@@ -121,6 +121,112 @@ function parseJestJson(raw: string): GraderResult {
   return { passed: jestData.success, score, checks };
 }
 
+function parsePytestTestId(nodeid: string): { id: string; weight: number } | null {
+  const m1 = nodeid.match(/test_([vVhH]\d+)_(\d+)/);
+  if (m1) {
+    return { id: m1[1].toUpperCase(), weight: parseInt(m1[2], 10) };
+  }
+  const m2 = nodeid.match(/\[([A-Z]\d+):(\d+)\]/);
+  if (m2) {
+    return { id: m2[1], weight: parseInt(m2[2], 10) };
+  }
+  return null;
+}
+
+function extractJsonObject(raw: string): string | null {
+  const start = raw.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          return raw.slice(start, i + 1);
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Parses pytest-json-report structured output (written to stdout via
+ * --json-report-file=/dev/stdout) into normalized GraderResult shape.
+ *
+ * Test ID / weight convention (must match what run.ts uses):
+ *   def test_v1_10_description(): → id="V1", weight=10
+ *   def test_h2_25_description(): → id="H2", weight=25
+ * Alternatively: nodeid contains [V1:10] for parametrized tests.
+ */
+function parsePytestJson(raw: string): GraderResult {
+  const jsonStr = extractJsonObject(raw);
+  if (!jsonStr) {
+    throw new Error(`Pytest produced no JSON report.\\nRaw (first 600):\\n${raw.slice(0, 600)}`);
+  }
+
+  let pytestData: {
+    exitcode?: number;
+    summary?: { passed?: number; failed?: number; total?: number };
+    tests?: Array<{
+      nodeid:  string;
+      outcome: string;
+      call?: {
+        longrepr?: string | { crash?: { message?: string } };
+      };
+    }>;
+  };
+
+  try {
+    pytestData = JSON.parse(jsonStr);
+  } catch (e) {
+    throw new Error(
+      `Failed to parse Pytest JSON: ${(e as Error).message}\n` +
+      `Slice: ${raw.slice(0, 400)}`
+    );
+  }
+
+  const checks: VerdictCheck[] = [];
+  let score = 0;
+
+  for (const t of pytestData.tests ?? []) {
+    const meta = parsePytestTestId(t.nodeid);
+    if (!meta) continue;
+
+    const passed = t.outcome === 'passed';
+    if (passed) score += meta.weight;
+
+    let failureMessage: string | undefined;
+    if (!passed && t.call?.longrepr) {
+      if (typeof t.call.longrepr === 'string') {
+        failureMessage = t.call.longrepr.split('\n').filter(l => l.trim().length > 0).pop()?.trim();
+      } else if (typeof t.call.longrepr === 'object' && t.call.longrepr?.crash?.message) {
+        failureMessage = t.call.longrepr.crash.message;
+      }
+    }
+
+    checks.push({ id: meta.id, weight: meta.weight, passed, message: failureMessage });
+  }
+
+  return { passed: pytestData.exitcode === 0, score, checks };
+}
+
 /** Load problem metadata from packages/problems/<slug>/meta.json */
 function loadProblemMeta(slug: string): ProblemMeta {
   const metaPath = path.join(__dirname, slug, 'meta.json');
@@ -206,7 +312,9 @@ async function runInDocker(opts: {
   }
 
   const raw = stdout || stderr;
-  const result = parseJestJson(raw);
+  const result = meta.testFramework === 'pytest'
+    ? parsePytestJson(raw)
+    : parseJestJson(raw);
   return { ...result, rawOutput: raw };
 }
 
@@ -355,13 +463,15 @@ async function main() {
   const meta           = loadProblemMeta(slug);
   const packDir        = path.join(__dirname, slug);
   const starterPath    = path.join(packDir, 'repo', meta.entryFile);
-  const referencePath  = path.join(packDir, 'solutions', 'reference.js');
+  // Derive reference solution extension from language
+  const refExt         = meta.language === 'python' ? '.py' : '.js';
+  const referencePath  = path.join(packDir, 'solutions', `reference${refExt}`);
   const hiddenDir      = path.join(packDir, 'tests', 'hidden');
 
-  // Auto-discover the first .js file in bad_patches/
+  // Auto-discover the first .js or .py file in bad_patches/
   const badPatchesDir = path.join(packDir, 'bad_patches');
   const badPatchFiles = fs.existsSync(badPatchesDir)
-    ? fs.readdirSync(badPatchesDir).filter(f => f.endsWith('.js'))
+    ? fs.readdirSync(badPatchesDir).filter(f => f.endsWith('.js') || f.endsWith('.py'))
     : [];
   const badPatchPath = badPatchFiles.length > 0
     ? path.join(badPatchesDir, badPatchFiles[0])
@@ -383,7 +493,7 @@ async function main() {
     }
   }
   if (!badPatchPath) {
-    console.error(`${R}Missing:${RS} Bad patch — no .js files found in ${badPatchesDir}`);
+    console.error(`${R}Missing:${RS} Bad patch — no .js or .py files found in ${badPatchesDir}`);
     process.exit(1);
   }
 

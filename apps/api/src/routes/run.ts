@@ -183,12 +183,45 @@ function parsePytestTestId(nodeid: string): { id: string; weight: number } | nul
   return null;
 }
 
+function extractJsonObject(raw: string): string | null {
+  const start = raw.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          return raw.slice(start, i + 1);
+        }
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Parses pytest-json-report structured output into normalized result shape.
  */
 function parsePytestJson(raw: string): Omit<RunResult, "rawOutput" | "durationMs"> {
-  const start = raw.indexOf("{");
-  if (start === -1) {
+  const jsonStr = extractJsonObject(raw);
+  if (!jsonStr) {
     throw new Error(`Pytest produced no JSON report output.\nRaw:\n${raw.slice(0, 2000)}`);
   }
 
@@ -205,9 +238,9 @@ function parsePytestJson(raw: string): Omit<RunResult, "rawOutput" | "durationMs
   };
 
   try {
-    pytestData = JSON.parse(raw.slice(start));
+    pytestData = JSON.parse(jsonStr);
   } catch (e) {
-    throw new Error(`Failed to parse Pytest JSON: ${(e as Error).message}\nRaw slice:\n${raw.slice(start, start + 500)}`);
+    throw new Error(`Failed to parse Pytest JSON: ${(e as Error).message}\nRaw slice:\n${raw.slice(0, 500)}`);
   }
 
   const checks: VerdictCheck[] = [];
