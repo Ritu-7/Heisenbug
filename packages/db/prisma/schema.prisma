@@ -1,0 +1,183 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CANDIDATE
+  RECRUITER
+  AUTHOR
+  ADMIN
+}
+
+enum ProblemVersionStatus {
+  DRAFT
+  VALIDATING
+  PUBLISHED
+  NEEDS_REVISION
+}
+
+enum SessionMode {
+  PRACTICE
+  ASSESSMENT
+}
+
+enum SessionStatus {
+  ACTIVE
+  SUBMITTED
+  EXPIRED
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String
+  role         Role
+  passwordHash String?      @map("password_hash")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  sessions     Session[]
+  assessments  Assessment[] @relation("RecruiterAssessments")
+
+  @@map("users")
+}
+
+model Problem {
+  id          String           @id @default(cuid())
+  slug        String           @unique
+  title       String
+  track       String
+  difficulty  String
+  estMinutes  Int              @map("est_minutes")
+  skills      String[]
+  stack       String
+  createdAt   DateTime         @default(now()) @map("created_at")
+  versions    ProblemVersion[]
+
+  @@map("problems")
+}
+
+model ProblemVersion {
+  id            String               @id @default(cuid())
+  problemId     String               @map("problem_id")
+  problem       Problem              @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  version       Int
+  status        ProblemVersionStatus @default(DRAFT)
+  descriptionMd String               @map("description_md") @db.Text
+  editorialMd   String               @default("") @map("editorial_md") @db.Text
+  solutionMd    String               @default("") @map("solution_md") @db.Text
+  createdAt     DateTime             @default(now()) @map("created_at")
+  variants      Variant[]
+  sessions      Session[]
+  assessmentProblems AssessmentProblem[]
+
+  @@unique([problemId, version])
+  @@map("problem_versions")
+}
+
+model Variant {
+  id         String         @id @default(cuid())
+  versionId  String         @map("version_id")
+  version    ProblemVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  paramsJson Json           @map("params_json")
+  sessions   Session[]
+
+  @@map("variants")
+}
+
+model Session {
+  id        String        @id @default(cuid())
+  userId    String        @map("user_id")
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  versionId String        @map("version_id")
+  version   ProblemVersion @relation(fields: [versionId], references: [id])
+  variantId String        @map("variant_id")
+  variant   Variant       @relation(fields: [variantId], references: [id])
+  mode      SessionMode
+  status    SessionStatus  @default(ACTIVE)
+  deadline  DateTime?
+  createdAt DateTime       @default(now()) @map("created_at")
+  events    SessionEvent[]
+  submissions Submission[]
+  hintUses  HintUse[]
+  invitation Invitation?
+
+  @@map("sessions")
+}
+
+model SessionEvent {
+  id          String   @id @default(cuid())
+  sessionId   String   @map("session_id")
+  session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  occurredAt  DateTime
+  type        String
+  payloadJson Json     @map("payload_json")
+
+  @@map("session_events")
+}
+
+model Submission {
+  id          String   @id @default(cuid())
+  sessionId   String   @map("session_id")
+  session     Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  diffText    String   @map("diff_text") @db.Text
+  verdictJson Json     @map("verdict_json")
+  score       Float
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("submissions")
+}
+
+model HintUse {
+  id         String   @id @default(cuid())
+  sessionId  String   @map("session_id")
+  session    Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  hintIndex  Int      @map("hint_index")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("hint_uses")
+}
+
+model Assessment {
+  id               String              @id @default(cuid())
+  recruiterId      String              @map("recruiter_id")
+  recruiter        User                @relation("RecruiterAssessments", fields: [recruiterId], references: [id])
+  title            String
+  timeLimitMinutes Int                 @map("time_limit_minutes")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  problems         AssessmentProblem[]
+  invitations      Invitation[]
+
+  @@map("assessments")
+}
+
+model AssessmentProblem {
+  id           String         @id @default(cuid())
+  assessmentId String         @map("assessment_id")
+  assessment   Assessment     @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  versionId    String         @map("version_id")
+  version      ProblemVersion @relation(fields: [versionId], references: [id])
+  orderIndex   Int            @map("order_index")
+
+  @@unique([assessmentId, orderIndex])
+  @@map("assessment_problems")
+}
+
+model Invitation {
+  id             String     @id @default(cuid())
+  assessmentId   String     @map("assessment_id")
+  assessment     Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  candidateEmail String     @map("candidate_email")
+  token          String     @unique @default(cuid())
+  expiresAt      DateTime   @map("expires_at")
+  sessionId      String?    @unique @map("session_id")
+  session        Session?   @relation(fields: [sessionId], references: [id])
+
+  @@map("invitations")
+}

@@ -1,0 +1,12 @@
+{
+  "slug": "be-idempotency-001",
+  "title": "Checkout double-charges on client retry",
+  "version": 1,
+  "entryFile": "src/charge.js",
+  "language": "javascript",
+  "testCommand": "node --experimental-vm-modules node_modules/.bin/jest --testPathPattern=checkout.test",
+  "files": [
+    { "path": "src/charge.js", "editable": true,  "label": "checkout handler" },
+    { "path": "src/db/client.js", "editable": false, "label": "DB client (read-only)" }
+  ]
+}

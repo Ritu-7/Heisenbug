@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design tokens ─────────────────────────────────────────────────────── */
+@layer base {
+  :root {
+    /* Background & surface */
+    --background:     #F5F7F9;
+    --surface:        #FFFFFF;
+    --surface-2:      #EDF1F4;
+
+    /* Text */
+    --text:           #17212B;
+    --text-secondary: #4A5967;
+
+    /* Border */
+    --border:         #D3DBE2;
+
+    /* Accent */
+    --accent:         #6B4FBB;
+    --accent-soft:    #EBE5FA;
+
+    /* Pass */
+    --pass:           #1C7A4B;
+    --pass-soft:      #DFF3E8;
+
+    /* Fail */
+    --fail:           #B3322A;
+    --fail-soft:      #FBE4E1;
+
+    /* Warning */
+    --warning:        #8A5A00;
+    --warning-soft:   #FBEFD5;
+  }
+
+  .dark {
+    --background:     #0F151B;
+    --surface:        #161E26;
+    --surface-2:      #1D2731;
+    --text:           #E3E9EF;
+    --text-secondary: #9AA9B7;
+    --border:         #2B3743;
+    --accent:         #9C85E0;
+    /* pass / fail / warning intentionally inherit light values */
+  }
+
+  html {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    background-color: var(--background);
+    color: var(--text);
+  }
+
+  code, kbd, pre, .font-mono {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  h1, h2, h3, .font-serif {
+    font-family: 'Source Serif 4', Georgia, serif;
+  }
+}
