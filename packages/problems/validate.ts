@@ -27,29 +27,7 @@ const graderImageFor  = (slug: string) => `heisenbug-grader-runner-${slug}:lates
 const TIMEOUT_MS     = 120_000;
 const CONSISTENCY_RUNS = 5;
 
-// Candidate named pipes on Windows Docker Desktop
-const PIPE_CANDIDATES = [
-  'npipe:////./pipe/dockerDesktopLinuxEngine',
-  'npipe:////./pipe/docker_engine',
-  'npipe:////./pipe/dockerDesktopEngine',
-];
 
-/** Probe candidate named pipes to find one that actively accepts connections. */
-async function findWorkingDockerHost(): Promise<string | undefined> {
-  // Respect user-specified DOCKER_HOST if set explicitly
-  if (process.env.DOCKER_HOST) return process.env.DOCKER_HOST;
-
-  for (const host of PIPE_CANDIDATES) {
-    try {
-      await execFileAsync('docker', ['ps', '--format', '{{.ID}}'], {
-        env: { ...process.env, DOCKER_HOST: host },
-        timeout: 4000,
-      });
-      return host; // Found working host!
-    } catch { /* try next */ }
-  }
-  return undefined; // Let docker CLI use default context
-}
 
 // ── ANSI colors ──────────────────────────────────────────────────────────────
 

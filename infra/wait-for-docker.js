@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
- * wait-for-docker.js — Polls until a Docker named pipe accepts connections.
- * Exits 0 and prints the working DOCKER_HOST to stdout when ready.
- * Exits 1 if Docker isn't ready within the timeout.
+ * infra/wait-for-docker.js — OS-agnostic helper to wait until docker CLI is responsive.
+ * Uses default docker context (inheriting process.env directly).
  */
 'use strict';
 
@@ -10,19 +9,13 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
 
-const PIPES = [
-  'npipe:////./pipe/dockerDesktopLinuxEngine',
-  'npipe:////./pipe/docker_engine',
-  'npipe:////./pipe/dockerDesktopEngine',
-];
+const TIMEOUT_MS = 60_000;
+const POLL_MS    = 2_000;
 
-const TIMEOUT_MS  = 120_000;
-const POLL_MS     = 3_000;
-
-async function probe(host) {
+async function probe() {
   try {
     await execFileAsync('docker', ['ps', '--format', '{{.ID}}'], {
-      env: { ...process.env, DOCKER_HOST: host },
+      env: { ...process.env },
       timeout: 4000,
     });
     return true;
@@ -33,14 +26,11 @@ async function probe(host) {
 
 async function main() {
   const start = Date.now();
-  process.stderr.write('Waiting for Docker Desktop to be ready');
+  process.stderr.write('Waiting for Docker daemon to be ready');
   while (Date.now() - start < TIMEOUT_MS) {
-    for (const host of PIPES) {
-      if (await probe(host)) {
-        process.stderr.write(' ✓\n');
-        console.log(host); // stdout: the working host
-        process.exit(0);
-      }
+    if (await probe()) {
+      process.stderr.write(' ✓\n');
+      process.exit(0);
     }
     process.stderr.write('.');
     await new Promise(r => setTimeout(r, POLL_MS));

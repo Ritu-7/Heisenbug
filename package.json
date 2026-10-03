@@ -12,8 +12,7 @@
     "db:generate": "turbo run db:generate",
     "db:migrate": "turbo run db:migrate",
     "db:seed": "turbo run db:seed",
-    "docker:build": "docker build -f infra/docker/session-runner-be-idempotency-001.Dockerfile -t heisenbug-session-runner-be-idempotency-001:latest . && docker build -f infra/docker/grader-runner-be-idempotency-001.Dockerfile -t heisenbug-grader-runner-be-idempotency-001:latest . && docker build -f infra/docker/session-runner-be-race-002.Dockerfile -t heisenbug-session-runner-be-race-002:latest . && docker build -f infra/docker/grader-runner-be-race-002.Dockerfile -t heisenbug-grader-runner-be-race-002:latest .",
-    "docker:build:node": "node infra/build-images.js"
+    "docker:build": "node infra/build-images.js"
   },
   "devDependencies": {
     "turbo": "^2.3.3",
