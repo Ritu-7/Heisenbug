@@ -49,8 +49,8 @@ def test_h1_25_production_simulation_accuracy():
     collapse when the column is 0 everywhere; a correctly fixed model is
     unaffected because it was trained without the column.
 
-    Threshold: accuracy on the production-simulated test set must be >= 0.60.
-    The buggy starter typically scores <= 0.50 on this check (near random).
+    Threshold: accuracy on the production-simulated test set must be >= 0.62.
+    The buggy starter typically scores <= 0.52 on this check (near random).
     """
     from sklearn.model_selection import train_test_split
     from sklearn.metrics import accuracy_score
@@ -96,8 +96,8 @@ def test_h1_25_production_simulation_accuracy():
     preds = model.predict(X_test)
     acc   = accuracy_score(y_test, preds)
 
-    assert acc >= 0.60, (
-        f"Production-simulation accuracy is {acc:.3f} — too low. "
+    assert acc >= 0.62, (
+        f"Production-simulation accuracy is {acc:.3f} — too low (threshold: 0.620). "
         "A model relying on refund_issued collapses when that column is 0 "
         "at inference time. Drop the leaky column from build_features()."
     )

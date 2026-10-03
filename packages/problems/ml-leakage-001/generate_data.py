@@ -1,64 +1,82 @@
 """
-Generate the synthetic churn dataset for ml-leakage-001.
-Fixed random seed — output is deterministic.
-Run once from repo root: python packages/problems/ml-leakage-001/generate_data.py
+Dataset generator for ml-leakage-001.
+
+Design goals:
+  - refund_issued: 90% of churners, 5% of non-churners -> very strong leaky signal
+  - Legitimate features (tenure, monthly_charges, contract_type, etc.) carry
+    MODERATE real predictive power -- enough that a model trained WITHOUT the
+    leaky column achieves ~65-70% accuracy on a production-sim split
+  - A model that INCLUDES refund_issued relies primarily on it, so when
+    refund_issued=0 at serve time, it regresses toward chance (~50-52%)
+
+Fixed seed = 42, N = 600 rows.
 """
 import csv
-import random
-import math
 import os
+import random
 
 random.seed(42)
 
 CONTRACTS = ["month-to-month", "one-year", "two-year"]
-N = 300
+N = 600
 
 rows = []
-for i in range(N):
-    tenure           = random.randint(1, 72)           # months
-    monthly_charges  = round(random.uniform(18, 120), 2)
-    support_tickets  = random.randint(0, 8)
-    contract_type    = random.choice(CONTRACTS)
-    auto_pay         = random.choice([0, 1])
+for _ in range(N):
+    tenure          = random.randint(1, 72)
+    monthly_charges = round(random.uniform(18, 120), 2)
+    support_tickets = random.randint(0, 6)
+    contract_type   = random.choice(CONTRACTS)
+    auto_pay        = random.choice([0, 1])
 
-    # True churn probability (no leaky info used here)
-    base = 0.05
+    # Legitimate signal
+    base = 0.30
     if contract_type == "month-to-month":
-        base += 0.25
-    if tenure < 6:
-        base += 0.20
-    if monthly_charges > 80:
-        base += 0.15
-    if support_tickets >= 4:
+        base += 0.28
+    elif contract_type == "one-year":
         base += 0.10
+    if tenure < 12:
+        base += 0.16
+    elif tenure < 24:
+        base += 0.08
+    elif tenure > 48:
+        base -= 0.10
+    if monthly_charges > 90:
+        base += 0.14
+    elif monthly_charges > 70:
+        base += 0.06
+    elif monthly_charges < 30:
+        base -= 0.10
+    if support_tickets >= 5:
+        base += 0.12
+    elif support_tickets >= 3:
+        base += 0.05
     if auto_pay:
-        base -= 0.05
-    base = max(0.02, min(0.95, base))
+        base -= 0.07
 
+    base = max(0.05, min(0.92, base))
     churned = 1 if random.random() < base else 0
 
-    # ────────────────────────────────────────────────────────────────────────
-    # LEAKY FEATURE: refund_issued
-    # In the real world this value is only ever recorded AFTER a customer
-    # has initiated cancellation.  During a live inference call the customer
-    # has not churned yet, so this field would be 0 / NaN for everyone.
-    # Including it in training teaches the model to predict the outcome from
-    # a feature that IS the outcome (just noisily encoded).
-    # ────────────────────────────────────────────────────────────────────────
+    # LEAKY FEATURE
     if churned == 1:
-        refund_issued = 1 if random.random() < 0.85 else 0   # mostly 1 for churners
+        refund_issued = 1 if random.random() < 0.90 else 0
     else:
-        refund_issued = 1 if random.random() < 0.04 else 0   # rarely 1 for non-churners
+        refund_issued = 1 if random.random() < 0.05 else 0
 
     rows.append({
-        "tenure":           tenure,
-        "monthly_charges":  monthly_charges,
-        "support_tickets":  support_tickets,
-        "contract_type":    contract_type,
-        "auto_pay":         auto_pay,
-        "refund_issued":    refund_issued,      # THE LEAKY COLUMN
-        "churned":          churned,
+        "tenure": tenure,
+        "monthly_charges": monthly_charges,
+        "support_tickets": support_tickets,
+        "contract_type": contract_type,
+        "auto_pay": auto_pay,
+        "refund_issued": refund_issued,
+        "churned": churned,
     })
+
+total_churners = sum(r["churned"] for r in rows)
+refund_in_churners = sum(r["refund_issued"] for r in rows if r["churned"] == 1)
+print(f"N={N}, churn_rate={total_churners/N:.1%}, "
+      f"refund_in_churners={refund_in_churners}/{total_churners} "
+      f"({refund_in_churners/total_churners:.1%})")
 
 out_path = os.path.join(os.path.dirname(__file__), "repo", "data", "churn.csv")
 os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -69,4 +87,4 @@ with open(out_path, "w", newline="") as f:
     writer.writerows(rows)
 
 print(f"Wrote {N} rows to {out_path}")
-print(f"Churn rate: {sum(r['churned'] for r in rows)/N:.1%}")
+
