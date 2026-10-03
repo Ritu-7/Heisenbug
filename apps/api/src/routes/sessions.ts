@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 
@@ -117,7 +118,7 @@ router.post("/", requireAuth, async (req: Request, res: Response): Promise<void>
  * Returns the session row joined with its ProblemVersion and Variant.
  * Auth: required — only the owning user may view their own session.
  */
-router.get("/:id", requireAuth, async (req: Request, res: Response): Promise<void> => {
+router.get("/:id", requireAuth, async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   const { id } = req.params;
   const userId = req.user!.sub;
 
@@ -161,7 +162,7 @@ router.get("/:id", requireAuth, async (req: Request, res: Response): Promise<voi
  * Returns all submissions for this session, ordered by createdAt desc.
  * Empty array (not 404) when none exist yet.
  */
-router.get("/:id/submissions", requireAuth, async (req: Request, res: Response): Promise<void> => {
+router.get("/:id/submissions", requireAuth, async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   const { id } = req.params;
   const userId = req.user!.sub;
 
@@ -192,7 +193,7 @@ router.get("/:id/submissions", requireAuth, async (req: Request, res: Response):
  * Returns all events for this session, ordered by occurredAt asc.
  * Used by the workspace to restore saved code and replay session history.
  */
-router.get("/:id/events", requireAuth, async (req: Request, res: Response): Promise<void> => {
+router.get("/:id/events", requireAuth, async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   const { id } = req.params;
   const userId = req.user!.sub;
 
@@ -222,7 +223,7 @@ router.get("/:id/events", requireAuth, async (req: Request, res: Response): Prom
  * Body: { occurredAt, type, payloadJson? }
  * Inserts a real SessionEvent row and returns it.
  */
-router.post("/:id/events", requireAuth, async (req: Request, res: Response): Promise<void> => {
+router.post("/:id/events", requireAuth, async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   const { id } = req.params;
   const userId = req.user!.sub;
 
@@ -253,7 +254,7 @@ router.post("/:id/events", requireAuth, async (req: Request, res: Response): Pro
       sessionId: id,
       occurredAt: new Date(occurredAt),
       type,
-      payloadJson,
+      payloadJson: payloadJson as Prisma.InputJsonObject,
     },
   });
 

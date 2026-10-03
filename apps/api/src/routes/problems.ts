@@ -34,7 +34,7 @@ router.get("/", async (_req: Request, res: Response): Promise<void> => {
     },
   });
 
-  const shaped = problems.map((p) => ({
+  const shaped = problems.map((p: (typeof problems)[number]) => ({
     id: p.id,
     slug: p.slug,
     title: p.title,
@@ -59,7 +59,7 @@ router.get("/", async (_req: Request, res: Response): Promise<void> => {
  *
  * Returns 404 if the pack directory or meta.json is missing.
  */
-router.get("/:slug/starter-code", async (req: Request, res: Response): Promise<void> => {
+router.get("/:slug/starter-code", async (req: Request<{ slug: string }>, res: Response): Promise<void> => {
   const { slug } = req.params;
 
   const packDir = path.join(PROBLEMS_ROOT, slug);
@@ -108,7 +108,7 @@ router.get("/:slug/starter-code", async (req: Request, res: Response): Promise<v
  * Returns the full problem + its latest PUBLISHED version (with descriptionMd).
  * 404 if not found or no published version exists.
  */
-router.get("/:slug", async (req: Request, res: Response): Promise<void> => {
+router.get("/:slug", async (req: Request<{ slug: string }>, res: Response): Promise<void> => {
   const { slug } = req.params;
 
   const problem = await prisma.problem.findUnique({

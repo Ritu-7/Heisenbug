@@ -16,8 +16,8 @@ Follow these exact steps in order from the repository root:
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/heisenbug/heisenbug.git
-cd heisenbug
+git clone https://github.com/Ritu-7/Heisenbug.git
+cd Heisenbug
 ```
 
 ### 2. Install dependencies

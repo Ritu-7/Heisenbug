@@ -5,6 +5,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { createPatch } from "diff";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 
@@ -203,7 +204,7 @@ async function resolveCode(sessionId: string, slug: string): Promise<string> {
  * KNOWN PERF GAP: no warm container pool — first run adds ~5–10s cold-start.
  * Results are returned directly (no queue/polling needed at current scale).
  */
-router.post("/:id/run", requireAuth, async (req: Request, res: Response): Promise<void> => {
+router.post("/:id/run", requireAuth, async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   const { id } = req.params;
   const userId = req.user!.sub;
 
@@ -270,7 +271,7 @@ router.post("/:id/run", requireAuth, async (req: Request, res: Response): Promis
           score: result.score,
           passed: result.passed,
           checks: result.checks,
-        },
+        } as unknown as Prisma.InputJsonObject,
       },
     });
 
@@ -297,7 +298,7 @@ router.post("/:id/run", requireAuth, async (req: Request, res: Response): Promis
  *
  * Saves a real Submission row to Postgres with verdictJson and score.
  */
-router.post("/:id/submit", requireAuth, async (req: Request, res: Response): Promise<void> => {
+router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   const { id } = req.params;
   const userId = req.user!.sub;
 
@@ -377,7 +378,7 @@ router.post("/:id/submit", requireAuth, async (req: Request, res: Response): Pro
       data: {
         sessionId: id,
         diffText,
-        verdictJson,
+        verdictJson: verdictJson as unknown as Prisma.InputJsonObject,
         score: result.score,
       },
     });
