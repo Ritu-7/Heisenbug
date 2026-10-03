@@ -20,7 +20,11 @@ const execFileAsync = promisify(execFile);
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
-const DOCKER_HOST    = 'npipe:////./pipe/dockerDesktopLinuxEngine';
+// No hardcoded DOCKER_HOST — respect the operator's environment.
+// If DOCKER_HOST is set in the shell (e.g. CI, remote daemon, non-standard
+// socket), it is passed through via process.env automatically.
+// On standard Docker Desktop (Linux or Mac) the docker CLI finds its context
+// without any DOCKER_HOST override.
 const SESSION_IMAGE  = 'heisenbug-session-runner:latest';
 const GRADER_IMAGE   = 'heisenbug-grader-runner:latest';
 const TIMEOUT_MS     = 120_000;
@@ -145,7 +149,7 @@ async function runInDocker(opts: {
   try {
     const out = await execFileAsync('docker', dockerArgs, {
       timeout:   TIMEOUT_MS,
-      env:       { ...process.env, DOCKER_HOST },
+      env:       { ...process.env },
       maxBuffer: 10 * 1024 * 1024,
     });
     stdout = out.stdout;

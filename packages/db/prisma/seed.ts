@@ -8,7 +8,7 @@ const DESCRIPTION_MD = `# PAY-482 · Checkout double-charges on client retry
 
 **Track:** Backend · **Difficulty:** Medium · **Est. time:** 30 min  
 **Skills:** idempotency · concurrency · payments  
-**Stack:** Node.js · Express · PostgreSQL
+**Stack:** Node.js · Express · JavaScript
 
 ---
 
@@ -38,8 +38,8 @@ call instead of returning the result of the first successful one.
 
 ### Root-cause area (your job is to fix it)
 
-\`src/routes/checkout.ts\` — the handler creates a \`PaymentIntent\` and an
-\`Order\` row on **every** request without checking whether an equivalent request
+\`src/charge.js\` — the \`handleCheckout\` function creates a \`PaymentIntent\` and an
+\`order\` record on **every** request without checking whether an equivalent request
 already completed.
 
 ---
@@ -48,17 +48,10 @@ already completed.
 
 \`\`\`
 src/
-  routes/
-    checkout.ts        ← entry point you will edit
-  services/
-    paymentService.ts  ← thin wrapper around stripe-node
-    orderService.ts    ← creates Order rows in the DB
+  charge.js          ← entry point you will edit
+  app.js             ← Express app wrapper
   db/
-    client.ts          ← shared Prisma client
-  middleware/
-    auth.ts            ← sets req.user
-prisma/
-  schema.prisma        ← Order, Payment, IdempotencyKey models already present
+    client.js        ← in-memory stateful database stub
 \`\`\`
 
 ---
@@ -69,59 +62,38 @@ prisma/
 - Clients send \`Idempotency-Key: <uuid>\` in the request header.
 - If no key is present, respond **\`400 Bad Request\`** with body
   \`{ "error": "Idempotency-Key header is required" }\`.
-- Store each key in the \`idempotency_keys\` table (columns: \`key\`, \`user_id\`,
-  \`response_status\`, \`response_body\`, \`created_at\`).
+- Check and store each key in the database via \`db.idempotencyKey\` stub methods.
 
 ### R2 — Correct HTTP status semantics
 | Scenario | Status |
 |---|---|
 | First successful checkout | **201 Created** |
 | Retry with same key (result already stored) | **200 OK** (replay stored response) |
-| Concurrent duplicate (key locked but not finished) | **409 Conflict** with \`{ "error": "Request in progress" }\` |
-| Missing or invalid payload | **400 Bad Request** |
+| Concurrent duplicate (key locked but not finished) | **409 Conflict** with \`{ "error": "Request already in progress — retry after 1s" }\` |
+| Missing header | **400 Bad Request** |
 
 ### R3 — Prevent concurrent duplicate processing
-- Use a **PostgreSQL advisory lock** (or a \`SELECT … FOR UPDATE\` on the
-  idempotency key row) so that two simultaneous retries cannot both proceed to
-  create a PaymentIntent.
-- The second concurrent request must receive **409** immediately, not wait
-  indefinitely.
+- Use an atomic database constraint via \`db.idempotencyKey.create(...)\` so that simultaneous retries cannot both proceed to create a \`PaymentIntent\`.
+- The concurrent duplicate request must receive **409 Conflict** immediately.
 
-### R4 — Atomicity
-- Inserting the \`IdempotencyKey\` row, calling \`paymentService.createIntent()\`,
-  and inserting the \`Order\` row must be wrapped in a **single database
-  transaction**.
-- If \`createIntent\` throws, the key row must be rolled back (so the client can
-  retry with the same key later).
-
-### R5 — Tests (not graded for this problem but expected to compile)
-A test file \`src/routes/checkout.test.ts\` already exists with 6 \`it()\` blocks
-(all currently failing). Your implementation should make them pass.
-
----
-
-## Constraints
-
-- Do **not** change the Stripe API call signature inside \`paymentService.ts\`.
-- Do **not** change the \`Order\` model in \`schema.prisma\`.
-- You may add columns to \`idempotency_keys\` if needed but may not remove
-  existing ones.
-- TypeScript strict mode is on; no \`any\` casts.
+### R4 — Atomicity & Error Handling
+- Wrap state updates in \`db.$transaction(async (tx) => { ... })\`.
+- If \`stripe.paymentIntents.create()\` fails or throws an error, the key must NOT be persisted with status \`COMPLETE\`.
 
 ---
 
 ## Acceptance criteria (auto-checked)
 
-| ID | Check | Weight |
-|----|-------|--------|
-| AC-1 | Missing \`Idempotency-Key\` header → 400 | 10 |
-| AC-2 | First call → 201 + \`PaymentIntent\` created once in Stripe | 20 |
-| AC-3 | Retry with same key → 200 + **no** new \`PaymentIntent\` | 25 |
-| AC-4 | Concurrent duplicate → 409 within 500 ms | 20 |
-| AC-5 | DB transaction rolled back on Stripe error | 15 |
-| AC-6 | TypeScript compiles with \`tsc --noEmit\` | 10 |
+| ID | Suite | Check | Weight |
+|----|-------|-------|--------|
+| V1 | Visible | Returns 400 if \`Idempotency-Key\` header is missing | 10 pts |
+| V2 | Visible | Returns 201 with \`clientSecret\` on first call | 20 pts |
+| V3 | Visible | Returns 200 on replay; Stripe called only once | 30 pts |
+| H1 | Hidden | Concurrent duplicate requests → 1× 201, rest return 409 | 15 pts |
+| H2 | Hidden | If Stripe throws, idempotency key is NOT marked \`COMPLETE\` | 15 pts |
+| H3 | Hidden | Three sequential retries all return identical response | 10 pts |
 
-Total: **100 points** · Pass threshold: **70**
+**Visible total:** 60 pts · **Hidden total:** 40 pts · **Grand total:** 100 pts
 `;
 
 async function main() {

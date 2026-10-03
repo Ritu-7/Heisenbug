@@ -4,6 +4,7 @@ import { promisify } from "util";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { createPatch } from "diff";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 
@@ -12,7 +13,6 @@ const execFileAsync = promisify(execFile);
 
 // ── Config ─────────────────────────────────────────────────────────────────
 
-const DOCKER_HOST = "npipe:////./pipe/dockerDesktopLinuxEngine";
 const SESSION_IMAGE = "heisenbug-session-runner:latest";
 const GRADER_IMAGE  = "heisenbug-grader-runner:latest";
 
@@ -20,10 +20,12 @@ const GRADER_IMAGE  = "heisenbug-grader-runner:latest";
 // routes/ → src/ → api/ → apps/ → monorepo root → packages/problems/…
 const PROBLEMS_ROOT = path.resolve(__dirname, "../../../../packages/problems");
 
-const DOCKER_ENV: NodeJS.ProcessEnv = {
-  ...process.env,
-  DOCKER_HOST,
-};
+// Pass DOCKER_HOST through only if the operator has explicitly set it in
+// their environment (e.g. a non-standard socket path or a remote daemon).
+// On a default Docker Desktop install (Linux or Mac) we let docker pick its
+// own context; on the CI runner the CI system sets DOCKER_HOST itself.
+const DOCKER_ENV: NodeJS.ProcessEnv = { ...process.env };
+// (DOCKER_HOST is inherited from process.env automatically if set)
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -356,14 +358,19 @@ router.post("/:id/submit", requireAuth, async (req: Request, res: Response): Pro
       checks: result.checks,
     };
 
-    // Compute a simple diff (what was changed from starter code)
+    // Compute a real unified diff between starter code and candidate submission.
+    // createPatch(filename, oldStr, newStr, oldHeader, newHeader) → unified diff string
     const starterPath = path.join(PROBLEMS_ROOT, slug, "repo", "src", "charge.js");
     const starterCode = fs.existsSync(starterPath)
       ? fs.readFileSync(starterPath, "utf-8")
       : "";
-    const diffText = `--- a/src/charge.js\n+++ b/src/charge.js\n(${
-      candidateCode === starterCode ? "no changes from starter" : "candidate modified charge.js"
-    })`;
+    const diffText = createPatch(
+      "src/charge.js",
+      starterCode,
+      candidateCode,
+      "a/src/charge.js (starter)",
+      "b/src/charge.js (submission)",
+    );
 
     // Save real Submission row to Postgres
     const submission = await prisma.submission.create({
