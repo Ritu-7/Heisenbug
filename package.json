@@ -12,7 +12,8 @@
     "db:generate": "turbo run db:generate",
     "db:migrate": "turbo run db:migrate",
     "db:seed": "turbo run db:seed",
-    "docker:build": "node infra/build-images.js"
+    "docker:build": "node infra/build-images.js",
+    "test:e2e": "node test-e2e-api.js"
   },
   "devDependencies": {
     "turbo": "^2.3.3",
