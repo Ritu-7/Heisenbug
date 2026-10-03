@@ -266,6 +266,7 @@ router.post("/:id/run", requireAuth, async (req: Request<{ id: string }>, res: R
         sessionId: id,
         occurredAt: new Date(),
         type: "RUN_COMPLETED",
+        // Double cast via unknown is required because custom interface arrays (VerdictCheck[]) don't automatically overlap Prisma's recursive InputJsonValue index signature
         payloadJson: {
           durationMs,
           score: result.score,
@@ -378,6 +379,7 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
       data: {
         sessionId: id,
         diffText,
+        // Double cast via unknown is required because custom interface arrays (VerdictCheck[]) don't automatically overlap Prisma's recursive InputJsonValue index signature
         verdictJson: verdictJson as unknown as Prisma.InputJsonObject,
         score: result.score,
       },
