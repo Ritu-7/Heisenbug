@@ -339,7 +339,7 @@ export interface InvitationPublic {
 export async function createAssessment(body: {
   title: string;
   timeLimitMinutes: number;
-  problemVersionIds: string[];
+  problemVersionId: string;
 }): Promise<Assessment> {
   const data = await apiFetch<{ ok: boolean; data: Assessment }>("/api/assessments", {
     method: "POST",

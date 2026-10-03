@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 const FormSchema = z.object({
   title: z.string().min(1, "Title is required"),
   timeLimitMinutes: z.coerce.number().int().min(5, "Min 5 minutes").max(480, "Max 480 minutes"),
-  problemVersionIds: z.array(z.string()).min(1, "Select at least one problem"),
+  problemVersionId: z.string().min(1, "Select a problem"),
 });
 
 type FormValues = z.infer<typeof FormSchema>;
@@ -45,7 +45,7 @@ function AssessmentRow({ assessment }: { assessment: Assessment }) {
           {assessment.title}
         </p>
         <p className="mt-0.5 text-xs text-text-secondary font-mono">
-          {assessment.problems.length} problem{assessment.problems.length !== 1 ? "s" : ""} ·{" "}
+          {assessment.problems[0]?.version.problem.title ?? "1 problem"} ·{" "}
           {assessment.timeLimitMinutes} min ·{" "}
           {assessment._count?.invitations ?? 0} invitation{(assessment._count?.invitations ?? 0) !== 1 ? "s" : ""}
         </p>
@@ -78,7 +78,7 @@ function NewAssessmentForm({
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(FormSchema),
-    defaultValues: { title: "", timeLimitMinutes: 60, problemVersionIds: [] },
+    defaultValues: { title: "", timeLimitMinutes: 60, problemVersionId: "" },
   });
 
   const mutation = useMutation({
@@ -125,20 +125,20 @@ function NewAssessmentForm({
           )}
         </div>
 
-        {/* Problem multi-select — real problems from GET /api/problems */}
+        {/* Problem single-select */}
         <div className="space-y-1">
           <label className="text-xs font-medium text-text-secondary">
-            Problems (select one or more)
+            Target Problem
           </label>
           <Controller
-            name="problemVersionIds"
+            name="problemVersionId"
             control={control}
             render={({ field }) => (
               <div className="space-y-2">
                 {problems.map((p) => {
                   const versionId = p.currentVersion?.id;
                   if (!versionId) return null;
-                  const checked = field.value.includes(versionId);
+                  const checked = field.value === versionId;
                   return (
                     <label
                       key={p.id}
@@ -150,16 +150,11 @@ function NewAssessmentForm({
                       )}
                     >
                       <input
-                        type="checkbox"
+                        type="radio"
+                        name="problemVersionId"
                         className="accent-accent"
                         checked={checked}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            field.onChange([...field.value, versionId]);
-                          } else {
-                            field.onChange(field.value.filter((id) => id !== versionId));
-                          }
-                        }}
+                        onChange={() => field.onChange(versionId)}
                       />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{p.title}</p>
@@ -172,8 +167,8 @@ function NewAssessmentForm({
               </div>
             )}
           />
-          {errors.problemVersionIds && (
-            <p className="text-xs text-fail font-mono">{errors.problemVersionIds.message}</p>
+          {errors.problemVersionId && (
+            <p className="text-xs text-fail font-mono">{errors.problemVersionId.message}</p>
           )}
         </div>
 

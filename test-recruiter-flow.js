@@ -34,8 +34,9 @@ async function main() {
   console.log();
 
   const versionIds = problems.map((p) => p.currentVersion.id);
+  const targetVersionId = versionIds[0];
 
-  // ── Step 2: Create Assessment with BOTH problems ────────────────────────
+  // ── Step 2: Create Assessment with single problem ─────────────────────────
   console.log("--- 2. Create Real Assessment ---");
   const createAssRes = await fetch(`${API_BASE}/api/assessments`, {
     method: "POST",
@@ -46,7 +47,7 @@ async function main() {
     body: JSON.stringify({
       title: "Senior Backend Engineer Assessment",
       timeLimitMinutes: 45,
-      problemVersionIds: versionIds,
+      problemVersionId: targetVersionId,
     }),
   });
   const createAssData = await createAssRes.json();

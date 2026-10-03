@@ -7,6 +7,7 @@ import problemsRouter from "./routes/problems";
 import sessionsRouter from "./routes/sessions";
 import runRouter from "./routes/run";
 import assessmentsRouter from "./routes/assessments";
+import invitationsRouter from "./routes/invitations";
 import { prisma } from "./lib/prisma";
 
 const app = express();
@@ -26,8 +27,7 @@ app.use("/api/problems", problemsRouter);
 app.use("/api/sessions", sessionsRouter);
 app.use("/api/sessions", runRouter); // run + submit endpoints
 app.use("/api/assessments", assessmentsRouter);
-// Public invitation endpoints share the same router under a different prefix
-app.use("/api", assessmentsRouter);
+app.use("/api/invitations", invitationsRouter);
 
 // ── 404 handler ────────────────────────────────────────────────────────────
 app.use((_req, res) => {
