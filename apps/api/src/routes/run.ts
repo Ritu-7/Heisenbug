@@ -153,6 +153,15 @@ function parseJestJson(raw: string): Omit<RunResult, "rawOutput" | "durationMs">
 }
 
 /**
+ * PYTEST OUTPUT DESTINATION CONVENTION:
+ * Pytest with `pytest-json-report` plugin writes report JSON to a file by default.
+ * To ensure structured JSON is piped directly to stdout for parsing, problem testCommand
+ * configurations for pytest MUST specify `--json-report --json-report-file=/dev/stdout` or
+ * `--json-report --json-report-file=.report.json && cat .report.json`.
+ *
+ * Example testCommand in meta.json for Python/pytest problems:
+ *   "pytest --json-report --json-report-file=/dev/stdout"
+ *
  * PYTEST TEST ID CONVENTION:
  * Pytest test function node IDs embed the test ID and weight in their function name or docstring:
  * Matches `test_v1_10_description` or `test_h2_15_concurrent` -> id: "V1", weight: 10
@@ -238,9 +247,9 @@ function parsePytestJson(raw: string): Omit<RunResult, "rawOutput" | "durationMs
 
 /**
  * Framework-agnostic Docker runner.
- * Reads meta.json for the given slug to determine testCommand and testFramework,
- * constructs the framework-specific scope flags, executes inside Docker,
- * and parses output using the framework's parser.
+ * Reads meta.json for the given slug to determine entryFile, testCommand, and testFramework,
+ * constructs framework-specific scope flags, volume-mounts candidate code to `/app/${meta.entryFile}`,
+ * executes inside Docker, and parses output using the appropriate framework parser.
  */
 async function runInDocker(opts: {
   image: string;
@@ -273,7 +282,7 @@ async function runInDocker(opts: {
       "--network", "none",
       "--memory", "256m",
       "--cpus", "0.5",
-      "-v", `${tmpFile}:/app/src/charge.js:ro`,
+      "-v", `${tmpFile}:/app/${meta.entryFile}:ro`,
       ...extraVolumes.flatMap((v) => ["-v", v]),
       image,
       "sh", "-c",
@@ -309,7 +318,7 @@ async function runInDocker(opts: {
   }
 }
 
-/** Fetch latest CODE_SAVE event code, or read starter code from disk. */
+/** Fetch latest CODE_SAVE event code, or read starter code from disk using meta.entryFile. */
 async function resolveCode(sessionId: string, slug: string): Promise<string> {
   const latest = await prisma.sessionEvent.findFirst({
     where: { sessionId, type: "CODE_SAVE" },
@@ -321,11 +330,12 @@ async function resolveCode(sessionId: string, slug: string): Promise<string> {
     if (payload?.code) return payload.code;
   }
 
-  // Fall back to starter code on disk
-  const starterPath = path.join(PROBLEMS_ROOT, slug, "repo", "src", "charge.js");
+  // Fall back to starter code on disk using meta.entryFile
+  const meta = loadProblemMeta(slug);
+  const starterPath = path.join(PROBLEMS_ROOT, slug, "repo", meta.entryFile);
   if (fs.existsSync(starterPath)) return fs.readFileSync(starterPath, "utf-8");
 
-  throw new Error(`No saved code and no starter code found for '${slug}'`);
+  throw new Error(`No saved code and no starter code found for '${slug}' at ${starterPath}`);
 }
 
 // ── Routes ─────────────────────────────────────────────────────────────────
@@ -448,6 +458,7 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
   }
 
   const slug = session.version?.problem?.slug ?? "be-idempotency-001";
+  const meta = loadProblemMeta(slug);
 
   let candidateCode: string;
   try {
@@ -484,17 +495,17 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
       checks: result.checks,
     };
 
-    // Compute real unified diff
-    const starterPath = path.join(PROBLEMS_ROOT, slug, "repo", "src", "charge.js");
+    // Compute real unified diff using meta.entryFile
+    const starterPath = path.join(PROBLEMS_ROOT, slug, "repo", meta.entryFile);
     const starterCode = fs.existsSync(starterPath)
       ? fs.readFileSync(starterPath, "utf-8")
       : "";
     const diffText = createPatch(
-      "src/charge.js",
+      meta.entryFile,
       starterCode,
       candidateCode,
-      "a/src/charge.js (starter)",
-      "b/src/charge.js (submission)",
+      `a/${meta.entryFile} (starter)`,
+      `b/${meta.entryFile} (submission)`,
     );
 
     // Save Submission row to Postgres and mark session as SUBMITTED

@@ -27,8 +27,6 @@ const graderImageFor  = (slug: string) => `heisenbug-grader-runner-${slug}:lates
 const TIMEOUT_MS     = 120_000;
 const CONSISTENCY_RUNS = 5;
 
-
-
 // ── ANSI colors ──────────────────────────────────────────────────────────────
 
 const G  = '\x1b[32m'; // green
@@ -58,6 +56,16 @@ interface GraderResult {
   passed: boolean;
   score:  number;
   checks: VerdictCheck[];
+}
+
+interface ProblemMeta {
+  slug: string;
+  title: string;
+  version: number;
+  entryFile: string;
+  language: string;
+  testFramework: 'jest' | 'pytest';
+  testCommand: string;
 }
 
 // ── Grader core ──────────────────────────────────────────────────────────────
@@ -113,18 +121,29 @@ function parseJestJson(raw: string): GraderResult {
   return { passed: jestData.success, score, checks };
 }
 
-function loadProblemMeta(slug: string): { testFramework: 'jest' | 'pytest'; testCommand: string } {
+/** Load problem metadata from packages/problems/<slug>/meta.json */
+function loadProblemMeta(slug: string): ProblemMeta {
   const metaPath = path.join(__dirname, slug, 'meta.json');
   if (fs.existsSync(metaPath)) {
     try {
       const data = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
       return {
+        slug: data.slug ?? slug,
+        title: data.title ?? '',
+        version: data.version ?? 1,
+        entryFile: data.entryFile ?? 'src/charge.js',
+        language: data.language ?? 'javascript',
         testFramework: data.testFramework ?? 'jest',
         testCommand: data.testCommand ?? 'npx jest --json --no-coverage --forceExit',
       };
     } catch { /* ignore */ }
   }
   return {
+    slug,
+    title: '',
+    version: 1,
+    entryFile: 'src/charge.js',
+    language: 'javascript',
     testFramework: 'jest',
     testCommand: 'npx jest --json --no-coverage --forceExit',
   };
@@ -141,7 +160,7 @@ async function runInDocker(opts: {
   const meta  = loadProblemMeta(slug);
 
   // Write candidate code to a host temp file for volume-mounting
-  const tmpFile = path.join(os.tmpdir(), `hb-validate-${Date.now()}.js`);
+  const tmpFile = path.join(os.tmpdir(), `hb-validate-${Date.now()}.entry`);
   fs.writeFileSync(tmpFile, candidateCode, 'utf-8');
 
   let testCmd = '';
@@ -162,7 +181,7 @@ async function runInDocker(opts: {
     '--network', 'none',
     '--memory', '256m',
     '--cpus', '0.5',
-    '-v', `${tmpFile}:/app/src/charge.js:ro`,
+    '-v', `${tmpFile}:/app/${meta.entryFile}:ro`,
     ...extraVolumes,
     image,
     'sh', '-c', `cd /app && ${testCmd} 2>/dev/null`,
@@ -333,8 +352,9 @@ async function main() {
     process.exit(1);
   }
 
+  const meta           = loadProblemMeta(slug);
   const packDir        = path.join(__dirname, slug);
-  const starterPath    = path.join(packDir, 'repo', 'src', 'charge.js');
+  const starterPath    = path.join(packDir, 'repo', meta.entryFile);
   const referencePath  = path.join(packDir, 'solutions', 'reference.js');
   const hiddenDir      = path.join(packDir, 'tests', 'hidden');
 
