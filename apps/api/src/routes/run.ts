@@ -25,10 +25,7 @@ const PROBLEMS_ROOT = path.resolve(__dirname, "../../../../packages/problems");
 
 // Pass DOCKER_HOST through only if the operator has explicitly set it in
 // their environment (e.g. a non-standard socket path or a remote daemon).
-// On a default Docker Desktop install (Linux or Mac) we let docker pick its
-// own context; on the CI runner the CI system sets DOCKER_HOST itself.
 const DOCKER_ENV: NodeJS.ProcessEnv = { ...process.env };
-// (DOCKER_HOST is inherited from process.env automatically if set)
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -47,22 +44,63 @@ interface RunResult {
   durationMs: number;
 }
 
+interface ProblemMeta {
+  slug: string;
+  title: string;
+  version: number;
+  entryFile: string;
+  language: string;
+  testFramework: "jest" | "pytest";
+  testCommand: string;
+  files: Array<{ path: string; editable: boolean; label: string }>;
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+/** Load problem metadata from packages/problems/<slug>/meta.json */
+function loadProblemMeta(slug: string): ProblemMeta {
+  const metaPath = path.join(PROBLEMS_ROOT, slug, "meta.json");
+  if (fs.existsSync(metaPath)) {
+    try {
+      const raw = fs.readFileSync(metaPath, "utf-8");
+      const data = JSON.parse(raw);
+      return {
+        slug: data.slug ?? slug,
+        title: data.title ?? "",
+        version: data.version ?? 1,
+        entryFile: data.entryFile ?? "src/charge.js",
+        language: data.language ?? "javascript",
+        testFramework: data.testFramework ?? "jest",
+        testCommand: data.testCommand ?? "npx jest --json --no-coverage --forceExit",
+        files: data.files ?? [],
+      };
+    } catch { /* ignore parse error, fallback to defaults */ }
+  }
+  return {
+    slug,
+    title: "",
+    version: 1,
+    entryFile: "src/charge.js",
+    language: "javascript",
+    testFramework: "jest",
+    testCommand: "npx jest --json --no-coverage --forceExit",
+    files: [],
+  };
+}
+
 /**
- * Extracts [V1:10] or [H3:15] prefix from a test title.
- * Returns null if the title doesn't follow the convention.
+ * JEST TEST ID CONVENTION:
+ * Extracts [V1:10] or [H3:15] prefix from a Jest test title.
+ * Example: "PAY-482 [V1:10] Returns 400 if header missing" -> id: "V1", weight: 10
  */
-function parseTestId(title: string): { id: string; weight: number } | null {
+function parseJestTestId(title: string): { id: string; weight: number } | null {
   const m = title.match(/^\[([A-Z]\d+):(\d+)\]/);
   if (!m) return null;
   return { id: m[1], weight: parseInt(m[2], 10) };
 }
 
 /**
- * Parses Jest --json stdout into a RunResult.
- * Jest with --json writes the JSON blob to stdout; non-JSON lines before it
- * (npm notices, warnings) are stripped by finding the first `{`.
+ * Parses Jest --json stdout into a normalized result shape.
  */
 function parseJestJson(raw: string): Omit<RunResult, "rawOutput" | "durationMs"> {
   const start = raw.indexOf("{");
@@ -94,7 +132,7 @@ function parseJestJson(raw: string): Omit<RunResult, "rawOutput" | "durationMs">
   for (const fileResult of jestData.testResults ?? []) {
     const assertions = fileResult.assertionResults ?? [];
     for (const t of assertions) {
-      const meta = parseTestId(t.title);
+      const meta = parseJestTestId(t.title);
       if (!meta) continue; // skip tests without ID prefix
 
       const passed = t.status === "passed";
@@ -115,53 +153,144 @@ function parseJestJson(raw: string): Omit<RunResult, "rawOutput" | "durationMs">
 }
 
 /**
- * Writes candidate code to a temp file, runs Jest inside a Docker container,
- * returns parsed result.
+ * PYTEST TEST ID CONVENTION:
+ * Pytest test function node IDs embed the test ID and weight in their function name or docstring:
+ * Matches `test_v1_10_description` or `test_h2_15_concurrent` -> id: "V1", weight: 10
+ * Also matches `[V1:10]` embedded in nodeid or test title if docstring/parametrize is used.
  *
- * NOTE: Each call starts a fresh container (docker run --rm).
- * Known perf gap: no warm container pool — cold-start adds ~5–10s.
+ * Examples:
+ *   nodeid: "tests/visible/test_purchase.py::test_v1_10_single_purchase" -> id: "V1", weight: 10
+ *   nodeid: "tests/hidden/test_race.py::test_h1_25_concurrent" -> id: "H1", weight: 25
+ */
+function parsePytestTestId(nodeid: string): { id: string; weight: number } | null {
+  const m1 = nodeid.match(/test_([vVhH]\d+)_(\d+)/);
+  if (m1) {
+    return { id: m1[1].toUpperCase(), weight: parseInt(m1[2], 10) };
+  }
+  const m2 = nodeid.match(/\[([A-Z]\d+):(\d+)\]/);
+  if (m2) {
+    return { id: m2[1], weight: parseInt(m2[2], 10) };
+  }
+  return null;
+}
+
+/**
+ * Parses pytest-json-report structured output into normalized result shape.
+ */
+function parsePytestJson(raw: string): Omit<RunResult, "rawOutput" | "durationMs"> {
+  const start = raw.indexOf("{");
+  if (start === -1) {
+    throw new Error(`Pytest produced no JSON report output.\nRaw:\n${raw.slice(0, 2000)}`);
+  }
+
+  let pytestData: {
+    exitcode?: number;
+    summary?: { passed?: number; failed?: number; total?: number };
+    tests?: Array<{
+      nodeid: string;
+      outcome: string;
+      call?: {
+        longrepr?: string | { crash?: { message?: string } };
+      };
+    }>;
+  };
+
+  try {
+    pytestData = JSON.parse(raw.slice(start));
+  } catch (e) {
+    throw new Error(`Failed to parse Pytest JSON: ${(e as Error).message}\nRaw slice:\n${raw.slice(start, start + 500)}`);
+  }
+
+  const checks: VerdictCheck[] = [];
+  let score = 0;
+  let allPassed = (pytestData.exitcode === 0);
+
+  for (const t of pytestData.tests ?? []) {
+    const meta = parsePytestTestId(t.nodeid);
+    if (!meta) continue;
+
+    const passed = t.outcome === "passed";
+    if (passed) {
+      score += meta.weight;
+    } else {
+      allPassed = false;
+    }
+
+    let failureMessage: string | undefined = undefined;
+    if (!passed && t.call?.longrepr) {
+      if (typeof t.call.longrepr === "string") {
+        failureMessage = t.call.longrepr.split("\n").filter((l) => l.trim().length > 0).pop()?.trim();
+      } else if (typeof t.call.longrepr === "object" && t.call.longrepr?.crash?.message) {
+        failureMessage = t.call.longrepr.crash.message;
+      }
+    }
+
+    checks.push({
+      id: meta.id,
+      weight: meta.weight,
+      passed,
+      message: failureMessage ?? (passed ? undefined : "Test failed"),
+    });
+  }
+
+  return { passed: allPassed, score, checks };
+}
+
+/**
+ * Framework-agnostic Docker runner.
+ * Reads meta.json for the given slug to determine testCommand and testFramework,
+ * constructs the framework-specific scope flags, executes inside Docker,
+ * and parses output using the framework's parser.
  */
 async function runInDocker(opts: {
   image: string;
   candidateCode: string;
   slug: string;
-  jestArgs: string[];
+  testScope: "visible" | "all";
   extraVolumes?: string[];
 }): Promise<{ result: Omit<RunResult, "rawOutput" | "durationMs">; rawOutput: string }> {
-  const { image, candidateCode, jestArgs, extraVolumes = [] } = opts;
+  const { image, candidateCode, slug, testScope, extraVolumes = [] } = opts;
+  const meta = loadProblemMeta(slug);
 
-  // Write candidate code to a host temp file for volume mounting
-  const tmpFile = path.join(os.tmpdir(), `heisenbug-${Date.now()}-charge.js`);
+  // Write candidate code to host temp file for mounting
+  const tmpFile = path.join(os.tmpdir(), `heisenbug-${Date.now()}-entry`);
   fs.writeFileSync(tmpFile, candidateCode, "utf-8");
 
   try {
+    let frameworkCmd = "";
+    if (meta.testFramework === "jest") {
+      const scopeFlag = testScope === "visible" ? `--testPathPattern="tests/visible"` : "";
+      frameworkCmd = `${meta.testCommand} ${scopeFlag}`.trim();
+    } else if (meta.testFramework === "pytest") {
+      const scopeFlag = testScope === "visible" ? `tests/visible` : "";
+      frameworkCmd = `${meta.testCommand} ${scopeFlag}`.trim();
+    } else {
+      throw new Error(`Unsupported test framework '${meta.testFramework}'`);
+    }
+
     const dockerArgs = [
       "run", "--rm",
-      "--network", "none",           // no network access inside container
-      "--memory", "256m",            // memory cap
-      "--cpus", "0.5",               // CPU cap
+      "--network", "none",
+      "--memory", "256m",
+      "--cpus", "0.5",
       "-v", `${tmpFile}:/app/src/charge.js:ro`,
-      ...extraVolumes.flatMap(v => ["-v", v]),
+      ...extraVolumes.flatMap((v) => ["-v", v]),
       image,
       "sh", "-c",
-      // 2>/dev/null suppresses Jest's progress output; JSON goes to stdout
-      `cd /app && npx jest ${jestArgs.join(" ")} --json --no-coverage --forceExit 2>/dev/null`,
+      `cd /app && ${frameworkCmd} 2>/dev/null`,
     ];
 
-    const t0 = Date.now();
     let stdout = "";
     let stderr = "";
     try {
       const out = await execFileAsync("docker", dockerArgs, {
         timeout: 120_000,
         env: DOCKER_ENV,
-        maxBuffer: 10 * 1024 * 1024, // 10 MB
+        maxBuffer: 10 * 1024 * 1024,
       });
       stdout = out.stdout;
       stderr = out.stderr;
     } catch (err: unknown) {
-      // Jest exits with code 1 when tests fail — execFileAsync throws.
-      // We still want to parse the JSON output.
       const e = err as { stdout?: string; stderr?: string; code?: number };
       stdout = e.stdout ?? "";
       stderr = e.stderr ?? "";
@@ -169,7 +298,11 @@ async function runInDocker(opts: {
     }
 
     const rawOutput = (stdout + "\n" + stderr).trim();
-    const result = parseJestJson(stdout || stderr);
+    const rawForParse = stdout || stderr;
+    const result = meta.testFramework === "pytest"
+      ? parsePytestJson(rawForParse)
+      : parseJestJson(rawForParse);
+
     return { result, rawOutput };
   } finally {
     try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
@@ -200,11 +333,7 @@ async function resolveCode(sessionId: string, slug: string): Promise<string> {
 /**
  * POST /api/sessions/:id/run
  *
- * Runs the candidate's current saved code against the VISIBLE test suite
- * inside a fresh session-runner container. No hidden tests involved.
- *
- * KNOWN PERF GAP: no warm container pool — first run adds ~5–10s cold-start.
- * Results are returned directly (no queue/polling needed at current scale).
+ * Runs candidate's code against VISIBLE test suite inside session-runner container.
  */
 router.post("/:id/run", requireAuth, async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   const { id } = req.params;
@@ -238,7 +367,7 @@ router.post("/:id/run", requireAuth, async (req: Request<{ id: string }>, res: R
     return;
   }
 
-  // Record a RUN_STARTED event
+  // Record RUN_STARTED event
   await prisma.sessionEvent.create({
     data: {
       sessionId: id,
@@ -256,7 +385,7 @@ router.post("/:id/run", requireAuth, async (req: Request<{ id: string }>, res: R
       image: sessionImage(slug),
       candidateCode,
       slug,
-      jestArgs: [`--testPathPattern="tests/visible"`],
+      testScope: "visible",
     });
 
     rawOutput = raw;
@@ -268,7 +397,6 @@ router.post("/:id/run", requireAuth, async (req: Request<{ id: string }>, res: R
         sessionId: id,
         occurredAt: new Date(),
         type: "RUN_COMPLETED",
-        // Double cast via unknown is required because custom interface arrays (VerdictCheck[]) don't automatically overlap Prisma's recursive InputJsonValue index signature
         payloadJson: {
           durationMs,
           score: result.score,
@@ -295,11 +423,7 @@ router.post("/:id/run", requireAuth, async (req: Request<{ id: string }>, res: R
 /**
  * POST /api/sessions/:id/submit
  *
- * Runs the candidate's code against the FULL test suite (visible + hidden)
- * inside a fresh grader-runner container. Hidden tests are mounted from the
- * host — they are NOT present in the grader image.
- *
- * Saves a real Submission row to Postgres with verdictJson and score.
+ * Runs candidate's code against FULL test suite (visible + hidden) inside grader-runner container.
  */
 router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   const { id } = req.params;
@@ -333,7 +457,7 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
     return;
   }
 
-  // Hidden tests path on the HOST (never inside any image)
+  // Hidden tests path on the HOST
   const hiddenTestsHostPath = path.join(PROBLEMS_ROOT, slug, "tests", "hidden");
   if (!fs.existsSync(hiddenTestsHostPath)) {
     res.status(500).json({ ok: false, error: `Hidden tests not found for '${slug}'` });
@@ -347,10 +471,8 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
       image: graderImage(slug),
       candidateCode,
       slug,
-      jestArgs: [], // run all tests (visible + hidden)
+      testScope: "all",
       extraVolumes: [
-        // Mount hidden tests from HOST into grader container
-        // Session runner never receives this volume mount
         `${hiddenTestsHostPath}:/app/tests/hidden:ro`,
       ],
     });
@@ -362,8 +484,7 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
       checks: result.checks,
     };
 
-    // Compute a real unified diff between starter code and candidate submission.
-    // createPatch(filename, oldStr, newStr, oldHeader, newHeader) → unified diff string
+    // Compute real unified diff
     const starterPath = path.join(PROBLEMS_ROOT, slug, "repo", "src", "charge.js");
     const starterCode = fs.existsSync(starterPath)
       ? fs.readFileSync(starterPath, "utf-8")
@@ -376,12 +497,11 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
       "b/src/charge.js (submission)",
     );
 
-    // Save real Submission row to Postgres and mark session as SUBMITTED
+    // Save Submission row to Postgres and mark session as SUBMITTED
     const [submission] = await prisma.$transaction([
       prisma.submission.create({
         data: {
           sessionId: id,
-          // Double cast via unknown is required because custom interface arrays (VerdictCheck[]) don't automatically overlap Prisma's recursive InputJsonValue index signature
           verdictJson: verdictJson as unknown as Prisma.InputJsonObject,
           diffText,
           score: result.score,

@@ -113,6 +113,23 @@ function parseJestJson(raw: string): GraderResult {
   return { passed: jestData.success, score, checks };
 }
 
+function loadProblemMeta(slug: string): { testFramework: 'jest' | 'pytest'; testCommand: string } {
+  const metaPath = path.join(__dirname, slug, 'meta.json');
+  if (fs.existsSync(metaPath)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+      return {
+        testFramework: data.testFramework ?? 'jest',
+        testCommand: data.testCommand ?? 'npx jest --json --no-coverage --forceExit',
+      };
+    } catch { /* ignore */ }
+  }
+  return {
+    testFramework: 'jest',
+    testCommand: 'npx jest --json --no-coverage --forceExit',
+  };
+}
+
 async function runInDocker(opts: {
   slug:            string;
   candidateCode:   string;
@@ -121,14 +138,20 @@ async function runInDocker(opts: {
 }): Promise<GraderResult & { rawOutput: string }> {
   const { slug, candidateCode, hiddenTestsPath, visibleOnly = false } = opts;
   const image = visibleOnly ? sessionImageFor(slug) : graderImageFor(slug);
+  const meta  = loadProblemMeta(slug);
 
   // Write candidate code to a host temp file for volume-mounting
   const tmpFile = path.join(os.tmpdir(), `hb-validate-${Date.now()}.js`);
   fs.writeFileSync(tmpFile, candidateCode, 'utf-8');
 
-  const jestCmd = visibleOnly
-    ? `npx jest --testPathPattern='tests/visible' --json --no-coverage --forceExit 2>/dev/null`
-    : `npx jest --json --no-coverage --forceExit 2>/dev/null`;
+  let testCmd = '';
+  if (meta.testFramework === 'jest') {
+    const scopeFlag = visibleOnly ? `--testPathPattern='tests/visible'` : '';
+    testCmd = `${meta.testCommand} ${scopeFlag}`.trim();
+  } else if (meta.testFramework === 'pytest') {
+    const scopeFlag = visibleOnly ? `tests/visible` : '';
+    testCmd = `${meta.testCommand} ${scopeFlag}`.trim();
+  }
 
   const extraVolumes = visibleOnly
     ? []
@@ -142,7 +165,7 @@ async function runInDocker(opts: {
     '-v', `${tmpFile}:/app/src/charge.js:ro`,
     ...extraVolumes,
     image,
-    'sh', '-c', `cd /app && ${jestCmd}`,
+    'sh', '-c', `cd /app && ${testCmd} 2>/dev/null`,
   ];
 
   let stdout = '', stderr = '';
@@ -155,8 +178,6 @@ async function runInDocker(opts: {
     stdout = out.stdout;
     stderr = out.stderr;
   } catch (err: unknown) {
-    // Jest exits with code 1 when tests fail — execFileAsync throws.
-    // We still want to parse the JSON in stdout/stderr.
     const e = err as { stdout?: string; stderr?: string };
     stdout = e.stdout ?? '';
     stderr = e.stderr ?? '';
