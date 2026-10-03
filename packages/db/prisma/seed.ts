@@ -220,6 +220,23 @@ async function main() {
   });
   console.log(`  ✓ Admin user:     ${admin.id} (${admin.email})`);
 
+  // ── Seed recruiter user ───────────────────────────────────────────────────
+  const RECRUITER_EMAIL = "recruiter@heisenbug.dev";
+  const RECRUITER_PASSWORD = "recruiterpassword123";
+  const recruiterHash = await bcrypt.hash(RECRUITER_PASSWORD, 10);
+
+  const recruiter = await prisma.user.upsert({
+    where: { email: RECRUITER_EMAIL },
+    update: { passwordHash: recruiterHash },
+    create: {
+      email: RECRUITER_EMAIL,
+      name: "Dana Recruiter",
+      role: "RECRUITER",
+      passwordHash: recruiterHash,
+    },
+  });
+  console.log(`  ✓ Recruiter user: ${recruiter.id} (${recruiter.email})`);
+
   // ── Seed problem 1: be-idempotency-001 ───────────────────────────────────
   const problem1 = await prisma.problem.upsert({
     where: { slug: "be-idempotency-001" },

@@ -10,6 +10,7 @@
   "dependencies": {
     "@heisenbug/db": "*",
     "@heisenbug/shared-types": "*",
+    "@paralleldrive/cuid2": "^3.3.0",
     "@types/diff": "^7.0.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",

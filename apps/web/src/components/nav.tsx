@@ -3,13 +3,24 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { fetchCurrentUser } from "@/lib/api";
 
 export function Nav() {
   const pathname = usePathname();
 
+  const { data: user } = useQuery({
+    queryKey: ["me"],
+    queryFn: fetchCurrentUser,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const isRecruiter = user?.role === "RECRUITER" || user?.role === "ADMIN";
+
   const links = [
     { href: "/", label: "Catalogue" },
-    { href: "/dashboard", label: "Candidate Dashboard" },
+    { href: "/dashboard", label: "My Progress" },
+    ...(isRecruiter ? [{ href: "/recruiter/dashboard", label: "Recruiter" }] : []),
   ];
 
   return (
@@ -22,7 +33,7 @@ export function Nav() {
           </Link>
           <nav className="flex items-center gap-1">
             {links.map((link) => {
-              const active = pathname === link.href;
+              const active = pathname === link.href || (link.href !== "/" && pathname.startsWith(link.href));
               return (
                 <Link
                   key={link.href}
@@ -42,9 +53,18 @@ export function Nav() {
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="text-xs text-text-secondary font-mono bg-surface-2 px-2 py-1 rounded border border-border">
-            alice@heisenbug.dev
-          </span>
+          {user ? (
+            <span className="text-xs text-text-secondary font-mono bg-surface-2 px-2 py-1 rounded border border-border">
+              {user.email}
+              {user.role !== "CANDIDATE" && (
+                <span className="ml-1.5 text-[10px] text-accent font-semibold uppercase">{user.role}</span>
+              )}
+            </span>
+          ) : (
+            <span className="text-xs text-text-secondary font-mono bg-surface-2 px-2 py-1 rounded border border-border">
+              Not signed in
+            </span>
+          )}
         </div>
       </div>
     </header>

@@ -283,4 +283,119 @@ export async function submitSession(sessionId: string): Promise<SubmitResult> {
   return data.data;
 }
 
+// ── Assessment types ───────────────────────────────────────────────────────
 
+export interface AssessmentProblem {
+  id: string;
+  orderIndex: number;
+  version: {
+    id: string;
+    version: number;
+    problem: { id: string; slug: string; title: string; difficulty: string };
+  };
+}
+
+export interface Assessment {
+  id: string;
+  recruiterId: string;
+  title: string;
+  timeLimitMinutes: number;
+  createdAt: string;
+  problems: AssessmentProblem[];
+  _count?: { invitations: number };
+}
+
+export type InvitationStatus = "INVITED" | "STARTED" | "SUBMITTED" | "EXPIRED";
+
+export interface Invitation {
+  id: string;
+  assessmentId: string;
+  candidateEmail: string;
+  token: string;
+  expiresAt: string;
+  sessionId: string | null;
+  status: InvitationStatus;
+}
+
+export interface AssessmentDetail extends Assessment {
+  invitations: Invitation[];
+}
+
+export interface InvitationPublic {
+  token: string;
+  candidateEmail: string;
+  expiresAt: string;
+  assessment: {
+    id: string;
+    title: string;
+    timeLimitMinutes: number;
+    problemCount: number;
+  };
+}
+
+// ── Assessment fetch functions ─────────────────────────────────────────────
+
+/** POST /api/assessments */
+export async function createAssessment(body: {
+  title: string;
+  timeLimitMinutes: number;
+  problemVersionIds: string[];
+}): Promise<Assessment> {
+  const data = await apiFetch<{ ok: boolean; data: Assessment }>("/api/assessments", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return data.data;
+}
+
+/** GET /api/assessments */
+export async function fetchAssessments(): Promise<Assessment[]> {
+  const data = await apiFetch<{ ok: boolean; data: Assessment[] }>("/api/assessments");
+  return data.data;
+}
+
+/** GET /api/assessments/:id */
+export async function fetchAssessment(id: string): Promise<AssessmentDetail> {
+  const data = await apiFetch<{ ok: boolean; data: AssessmentDetail }>(`/api/assessments/${id}`);
+  return data.data;
+}
+
+/** POST /api/assessments/:id/invitations */
+export async function createInvitation(
+  assessmentId: string,
+  candidateEmail: string,
+): Promise<{ invitation: Invitation; inviteUrl: string }> {
+  const data = await apiFetch<{ ok: boolean; data: { invitation: Invitation; inviteUrl: string } }>(
+    `/api/assessments/${assessmentId}/invitations`,
+    { method: "POST", body: JSON.stringify({ candidateEmail }) },
+  );
+  return data.data;
+}
+
+/** GET /api/invitations/:token (public) */
+export async function fetchInvitation(token: string): Promise<InvitationPublic> {
+  const res = await fetch(`${API_BASE}/api/invitations/${token}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    const err = new Error((body as { error?: string }).error ?? res.statusText) as Error & { status: number };
+    err.status = res.status;
+    throw err;
+  }
+  const data = await res.json() as { ok: boolean; data: InvitationPublic };
+  return data.data;
+}
+
+/** POST /api/invitations/:token/start (public) */
+export async function startInvitation(token: string): Promise<{
+  token: string;
+  session: Session;
+  assessment: InvitationPublic["assessment"];
+}> {
+  const res = await fetch(`${API_BASE}/api/invitations/${token}/start`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error((body as { error?: string }).error ?? res.statusText);
+  }
+  const data = await res.json() as { ok: boolean; data: { token: string; session: Session; assessment: InvitationPublic["assessment"] } };
+  return data.data;
+}
