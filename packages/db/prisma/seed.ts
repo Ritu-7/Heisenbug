@@ -3,8 +3,8 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-// ─── Problem description ──────────────────────────────────────────────────
-const DESCRIPTION_MD = `# PAY-482 · Checkout double-charges on client retry
+// ─── Problem 1: be-idempotency-001 ───────────────────────────────────────────
+const DESCRIPTION_MD_IDEMPOTENCY = `# PAY-482 · Checkout double-charges on client retry
 
 **Track:** Backend · **Difficulty:** Medium · **Est. time:** 30 min  
 **Skills:** idempotency · concurrency · payments  
@@ -96,6 +96,92 @@ src/
 **Visible total:** 60 pts · **Hidden total:** 40 pts · **Grand total:** 100 pts
 `;
 
+// ─── Problem 2: be-race-002 ───────────────────────────────────────────────────
+const DESCRIPTION_MD_RACE = `# FLASH-099 · Inventory oversells during a flash sale
+
+**Track:** Backend · **Difficulty:** Medium · **Est. time:** 30 min  
+**Skills:** race conditions · transactions · inventory  
+**Stack:** Node.js · Express · JavaScript
+
+---
+
+## Ticket context
+
+**Reported by:** Engineering (on-call alert)  
+**Severity:** 🔴 High  
+**Affects:** Production — flash sale purchase flow  
+**Reproducibility:** Occurs under concurrent load (> 5 req/s per product)
+
+### User-facing symptom
+
+During a flash sale for a limited-edition item (stock: 10 units), the system
+allowed **14 purchases** to complete successfully. The \`quantity\` field in the
+database shows \`-4\` after the sale. Fulfilment is now raising chargebacks because
+they cannot ship units that don't exist.
+
+### Reproduction steps
+
+1. Set a product's stock to \`N\`.
+2. Fire \`N + 1\` simultaneous \`POST /purchase\` requests for that product.
+3. Observe: more than \`N\` requests return \`200 OK\`, and the final stock goes negative.
+
+### Root-cause area (your job is to fix it)
+
+\`src/charge.js\` — the \`handlePurchase\` handler reads stock, checks \`quantity > 0\`,
+then decrements — but without any locking. Between the read and the decrement,
+other concurrent requests can read the same positive stock value, pass the check,
+and all decrement simultaneously, pushing \`quantity\` below zero.
+
+---
+
+## Codebase tour
+
+\`\`\`
+src/
+  charge.js          ← entry point you will edit
+  app.js             ← Express app wrapper
+  db/
+    client.js        ← in-memory stateful stock stub (yields to event loop between read and write)
+\`\`\`
+
+---
+
+## Requirements you must satisfy
+
+### R1 — Atomic check-and-decrement
+- Wrap the stock read-check-decrement in \`db.$transaction(async (tx) => { ... })\`.
+- Inside the transaction, use \`tx.stock.findUnique\` and \`tx.stock.update\`.
+- This eliminates the race window between read and write.
+
+### R2 — Correct HTTP status semantics
+| Scenario | Status |
+|---|---|
+| Stock available — purchase succeeds | **200 OK** with \`{ productId, remaining }\` |
+| Stock is 0 (or goes to 0 before your decrement) | **409 Conflict** with \`{ "error": "Out of stock" }\` |
+| \`productId\` field missing from request body | **400 Bad Request** |
+| Product not found in database | **404 Not Found** |
+
+### R3 — Stock never goes negative
+- After any number of concurrent purchases, \`remaining\` values returned must
+  all be ≥ 0.
+- The number of successful (\`200 OK\`) responses must never exceed the initial
+  stock quantity.
+
+---
+
+## Acceptance criteria (auto-checked)
+
+| ID | Suite | Check | Weight |
+|----|-------|-------|--------|
+| V1 | Visible | Single purchase decrements stock by 1 | 10 pts |
+| V2 | Visible | Returns 409 when stock is 0 | 20 pts |
+| V3 | Visible | Purchasing exactly the remaining stock succeeds | 30 pts |
+| H1 | Hidden | N concurrent requests with stock N-1 → exactly 1 rejected, stock never negative | 25 pts |
+| H2 | Hidden | Stress: 20 concurrent requests against stock of 10, stock never goes negative | 15 pts |
+
+**Visible total:** 60 pts · **Hidden total:** 40 pts · **Grand total:** 100 pts
+`;
+
 async function main() {
   console.log("🌱 Seeding database...");
 
@@ -134,8 +220,8 @@ async function main() {
   });
   console.log(`  ✓ Admin user:     ${admin.id} (${admin.email})`);
 
-  // ── Seed problem ─────────────────────────────────────────────────────────
-  const problem = await prisma.problem.upsert({
+  // ── Seed problem 1: be-idempotency-001 ───────────────────────────────────
+  const problem1 = await prisma.problem.upsert({
     where: { slug: "be-idempotency-001" },
     update: {},
     create: {
@@ -148,41 +234,41 @@ async function main() {
       stack: "node-express-postgres",
     },
   });
-  console.log(`  ✓ Problem: ${problem.id} (${problem.slug})`);
+  console.log(`  ✓ Problem: ${problem1.id} (${problem1.slug})`);
 
-  // ── Seed problem version ─────────────────────────────────────────────────
-  const existingVersion = await prisma.problemVersion.findUnique({
-    where: { problemId_version: { problemId: problem.id, version: 1 } },
+  // ── Seed problem version 1 ───────────────────────────────────────────────
+  const existingVersion1 = await prisma.problemVersion.findUnique({
+    where: { problemId_version: { problemId: problem1.id, version: 1 } },
   });
 
-  let version;
-  if (existingVersion) {
-    version = await prisma.problemVersion.update({
-      where: { id: existingVersion.id },
-      data: { status: "PUBLISHED", descriptionMd: DESCRIPTION_MD },
+  let version1;
+  if (existingVersion1) {
+    version1 = await prisma.problemVersion.update({
+      where: { id: existingVersion1.id },
+      data: { status: "PUBLISHED", descriptionMd: DESCRIPTION_MD_IDEMPOTENCY },
     });
   } else {
-    version = await prisma.problemVersion.create({
+    version1 = await prisma.problemVersion.create({
       data: {
-        problemId: problem.id,
+        problemId: problem1.id,
         version: 1,
         status: "PUBLISHED",
-        descriptionMd: DESCRIPTION_MD,
+        descriptionMd: DESCRIPTION_MD_IDEMPOTENCY,
         editorialMd: "",
         solutionMd: "",
       },
     });
   }
-  console.log(`  ✓ ProblemVersion: ${version.id} (v${version.version}, ${version.status})`);
+  console.log(`  ✓ ProblemVersion: ${version1.id} (v${version1.version}, ${version1.status})`);
 
-  // ── Seed default variant ─────────────────────────────────────────────────
-  const variantId = `${version.id}_default`;
-  const variant = await prisma.variant.upsert({
-    where: { id: variantId },
+  // ── Seed default variant for problem 1 ───────────────────────────────────
+  const variantId1 = `${version1.id}_default`;
+  const variant1 = await prisma.variant.upsert({
+    where: { id: variantId1 },
     update: {},
     create: {
-      id: variantId,
-      versionId: version.id,
+      id: variantId1,
+      versionId: version1.id,
       paramsJson: {
         variant: "default",
         stripeDelayMs: 0,
@@ -190,7 +276,65 @@ async function main() {
       },
     },
   });
-  console.log(`  ✓ Variant:        ${variant.id}`);
+  console.log(`  ✓ Variant:        ${variant1.id}`);
+
+  // ── Seed problem 2: be-race-002 ──────────────────────────────────────────
+  const problem2 = await prisma.problem.upsert({
+    where: { slug: "be-race-002" },
+    update: {},
+    create: {
+      slug: "be-race-002",
+      title: "Inventory oversells during a flash sale",
+      track: "backend",
+      difficulty: "medium",
+      estMinutes: 30,
+      skills: ["race-conditions", "transactions", "inventory"],
+      stack: "node-express-postgres",
+    },
+  });
+  console.log(`  ✓ Problem: ${problem2.id} (${problem2.slug})`);
+
+  // ── Seed problem version 2 ───────────────────────────────────────────────
+  const existingVersion2 = await prisma.problemVersion.findUnique({
+    where: { problemId_version: { problemId: problem2.id, version: 1 } },
+  });
+
+  let version2;
+  if (existingVersion2) {
+    version2 = await prisma.problemVersion.update({
+      where: { id: existingVersion2.id },
+      data: { status: "PUBLISHED", descriptionMd: DESCRIPTION_MD_RACE },
+    });
+  } else {
+    version2 = await prisma.problemVersion.create({
+      data: {
+        problemId: problem2.id,
+        version: 1,
+        status: "PUBLISHED",
+        descriptionMd: DESCRIPTION_MD_RACE,
+        editorialMd: "",
+        solutionMd: "",
+      },
+    });
+  }
+  console.log(`  ✓ ProblemVersion: ${version2.id} (v${version2.version}, ${version2.status})`);
+
+  // ── Seed default variant for problem 2 ───────────────────────────────────
+  const variantId2 = `${version2.id}_default`;
+  const variant2 = await prisma.variant.upsert({
+    where: { id: variantId2 },
+    update: {},
+    create: {
+      id: variantId2,
+      versionId: version2.id,
+      paramsJson: {
+        variant: "default",
+        concurrentRequests: 5,
+        stockLevel: 10,
+      },
+    },
+  });
+  console.log(`  ✓ Variant:        ${variant2.id}`);
 
   console.log("\n✅ Seed complete.");
   console.log("\n📋 Test credentials:");
@@ -206,3 +350,4 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+

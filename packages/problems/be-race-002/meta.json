@@ -1,0 +1,12 @@
+{
+  "slug": "be-race-002",
+  "title": "Inventory oversells during a flash sale",
+  "version": 1,
+  "entryFile": "src/charge.js",
+  "language": "javascript",
+  "testCommand": "npx jest --testPathPattern=purchase.test",
+  "files": [
+    { "path": "src/charge.js",    "editable": true,  "label": "purchase handler" },
+    { "path": "src/db/client.js", "editable": false, "label": "DB client (read-only)" }
+  ]
+}

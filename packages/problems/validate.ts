@@ -20,15 +20,36 @@ const execFileAsync = promisify(execFile);
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
+// Image names are derived from slug — must match what npm run docker:build produces.
 // No hardcoded DOCKER_HOST — respect the operator's environment.
-// If DOCKER_HOST is set in the shell (e.g. CI, remote daemon, non-standard
-// socket), it is passed through via process.env automatically.
-// On standard Docker Desktop (Linux or Mac) the docker CLI finds its context
-// without any DOCKER_HOST override.
-const SESSION_IMAGE  = 'heisenbug-session-runner:latest';
-const GRADER_IMAGE   = 'heisenbug-grader-runner:latest';
+const sessionImageFor = (slug: string) => `heisenbug-session-runner-${slug}:latest`;
+const graderImageFor  = (slug: string) => `heisenbug-grader-runner-${slug}:latest`;
 const TIMEOUT_MS     = 120_000;
 const CONSISTENCY_RUNS = 5;
+
+// Candidate named pipes on Windows Docker Desktop
+const PIPE_CANDIDATES = [
+  'npipe:////./pipe/dockerDesktopLinuxEngine',
+  'npipe:////./pipe/docker_engine',
+  'npipe:////./pipe/dockerDesktopEngine',
+];
+
+/** Probe candidate named pipes to find one that actively accepts connections. */
+async function findWorkingDockerHost(): Promise<string | undefined> {
+  // Respect user-specified DOCKER_HOST if set explicitly
+  if (process.env.DOCKER_HOST) return process.env.DOCKER_HOST;
+
+  for (const host of PIPE_CANDIDATES) {
+    try {
+      await execFileAsync('docker', ['ps', '--format', '{{.ID}}'], {
+        env: { ...process.env, DOCKER_HOST: host },
+        timeout: 4000,
+      });
+      return host; // Found working host!
+    } catch { /* try next */ }
+  }
+  return undefined; // Let docker CLI use default context
+}
 
 // ── ANSI colors ──────────────────────────────────────────────────────────────
 
@@ -115,12 +136,13 @@ function parseJestJson(raw: string): GraderResult {
 }
 
 async function runInDocker(opts: {
+  slug:            string;
   candidateCode:   string;
   hiddenTestsPath: string;
   visibleOnly?:    boolean;
 }): Promise<GraderResult & { rawOutput: string }> {
-  const { candidateCode, hiddenTestsPath, visibleOnly = false } = opts;
-  const image = visibleOnly ? SESSION_IMAGE : GRADER_IMAGE;
+  const { slug, candidateCode, hiddenTestsPath, visibleOnly = false } = opts;
+  const image = visibleOnly ? sessionImageFor(slug) : graderImageFor(slug);
 
   // Write candidate code to a host temp file for volume-mounting
   const tmpFile = path.join(os.tmpdir(), `hb-validate-${Date.now()}.js`);
@@ -181,6 +203,7 @@ function printChecks(checks: VerdictCheck[]) {
 // ── Check functions ──────────────────────────────────────────────────────────
 
 async function check1_StarterFailsHidden(
+  slug: string,
   starterCode: string,
   hiddenTestsPath: string,
 ): Promise<boolean> {
@@ -188,7 +211,7 @@ async function check1_StarterFailsHidden(
   hr();
   arrow('Running full suite (visible + hidden) against unmodified starter code...');
 
-  const r = await runInDocker({ candidateCode: starterCode, hiddenTestsPath });
+  const r = await runInDocker({ slug, candidateCode: starterCode, hiddenTestsPath });
   printChecks(r.checks);
 
   const hiddenFailed   = r.checks.filter(c => c.id.startsWith('H') && !c.passed);
@@ -206,6 +229,7 @@ async function check1_StarterFailsHidden(
 }
 
 async function check2_ReferencePassesAll(
+  slug: string,
   referenceCode: string,
   hiddenTestsPath: string,
 ): Promise<boolean> {
@@ -213,7 +237,7 @@ async function check2_ReferencePassesAll(
   hr();
   arrow('Running full suite (visible + hidden) against reference solution...');
 
-  const r = await runInDocker({ candidateCode: referenceCode, hiddenTestsPath });
+  const r = await runInDocker({ slug, candidateCode: referenceCode, hiddenTestsPath });
   printChecks(r.checks);
 
   arrow(`Reference score: ${r.score}/100`);
@@ -229,6 +253,7 @@ async function check2_ReferencePassesAll(
 }
 
 async function check3_GraderConsistency(
+  slug: string,
   referenceCode: string,
   hiddenTestsPath: string,
 ): Promise<boolean> {
@@ -238,7 +263,7 @@ async function check3_GraderConsistency(
 
   const scores: number[] = [];
   for (let i = 1; i <= CONSISTENCY_RUNS; i++) {
-    const r = await runInDocker({ candidateCode: referenceCode, hiddenTestsPath });
+    const r = await runInDocker({ slug, candidateCode: referenceCode, hiddenTestsPath });
     scores.push(r.score);
     const scoreStr = r.score === 100 ? `${G}${r.score}${RS}` : `${R}${r.score}${RS}`;
     arrow(`Run ${i}/${CONSISTENCY_RUNS}: score=${scoreStr}/100`);
@@ -260,6 +285,7 @@ async function check3_GraderConsistency(
 }
 
 async function check4_BadPatchRejected(
+  slug: string,
   badPatchCode: string,
   hiddenTestsPath: string,
 ): Promise<boolean> {
@@ -267,9 +293,9 @@ async function check4_BadPatchRejected(
   hr();
 
   // Step A: visible-only run (what the candidate sees in the session runner)
-  arrow('Running visible tests ONLY against bad patch (in-memory Map)...');
+  arrow('Running visible tests ONLY against bad patch...');
   const visR = await runInDocker({
-    candidateCode: badPatchCode, hiddenTestsPath, visibleOnly: true,
+    slug, candidateCode: badPatchCode, hiddenTestsPath, visibleOnly: true,
   });
   printChecks(visR.checks);
   const visAllPass = visR.checks.every(c => c.passed);
@@ -277,7 +303,7 @@ async function check4_BadPatchRejected(
 
   // Step B: full run (what the grader does on Submit)
   arrow('Running FULL suite (visible + hidden) against bad patch...');
-  const fullR = await runInDocker({ candidateCode: badPatchCode, hiddenTestsPath });
+  const fullR = await runInDocker({ slug, candidateCode: badPatchCode, hiddenTestsPath });
   printChecks(fullR.checks);
   const hiddenFailed = fullR.checks.filter(c => c.id.startsWith('H') && !c.passed);
   arrow(`Full score: ${fullR.score}/100`);
@@ -311,20 +337,35 @@ async function main() {
   const packDir        = path.join(__dirname, slug);
   const starterPath    = path.join(packDir, 'repo', 'src', 'charge.js');
   const referencePath  = path.join(packDir, 'solutions', 'reference.js');
-  const badPatchPath   = path.join(packDir, 'bad_patches', 'in_memory_map.js');
   const hiddenDir      = path.join(packDir, 'tests', 'hidden');
+
+  // Auto-discover the first .js file in bad_patches/
+  const badPatchesDir = path.join(packDir, 'bad_patches');
+  const badPatchFiles = fs.existsSync(badPatchesDir)
+    ? fs.readdirSync(badPatchesDir).filter(f => f.endsWith('.js'))
+    : [];
+  const badPatchPath = badPatchFiles.length > 0
+    ? path.join(badPatchesDir, badPatchFiles[0])
+    : '';
+
+  const sImg = sessionImageFor(slug);
+  const gImg = graderImageFor(slug);
 
   for (const [label, p] of [
     ['Pack dir',          packDir],
     ['Starter code',      starterPath],
     ['Reference solution',referencePath],
-    ['Bad patch',         badPatchPath],
+    ['Bad patches dir',   badPatchesDir],
     ['Hidden tests dir',  hiddenDir],
   ] as [string, string][]) {
     if (!fs.existsSync(p)) {
       console.error(`${R}Missing:${RS} ${label} — ${p}`);
       process.exit(1);
     }
+  }
+  if (!badPatchPath) {
+    console.error(`${R}Missing:${RS} Bad patch — no .js files found in ${badPatchesDir}`);
+    process.exit(1);
   }
 
   const starterCode    = fs.readFileSync(starterPath, 'utf-8');
@@ -336,23 +377,24 @@ async function main() {
   console.log(`${BD}${CY}║  Heisenbug — Problem Pack Validation Pipeline                ║${RS}`);
   console.log(`${BD}${CY}╠══════════════════════════════════════════════════════════════╣${RS}`);
   console.log(`${BD}${CY}║  Problem: ${slug.padEnd(51)}║${RS}`);
-  console.log(`${BD}${CY}║  Session image: ${SESSION_IMAGE.padEnd(45)}║${RS}`);
-  console.log(`${BD}${CY}║  Grader image:  ${GRADER_IMAGE.padEnd(45)}║${RS}`);
+  console.log(`${BD}${CY}║  Session image: ${sImg.padEnd(45)}║${RS}`);
+  console.log(`${BD}${CY}║  Grader image:  ${gImg.padEnd(45)}║${RS}`);
+  console.log(`${BD}${CY}║  Bad patch:     ${path.basename(badPatchPath).padEnd(45)}║${RS}`);
   console.log(`${BD}${CY}╚══════════════════════════════════════════════════════════════╝${RS}`);
 
   const results: Record<string, boolean> = {};
 
   // Run all 4 checks
-  try { results.check1 = await check1_StarterFailsHidden(starterCode, hiddenTestsPath); }
+  try { results.check1 = await check1_StarterFailsHidden(slug, starterCode, hiddenTestsPath); }
   catch (e) { ng(`Check 1 threw: ${(e as Error).message}`); results.check1 = false; }
 
-  try { results.check2 = await check2_ReferencePassesAll(referenceCode, hiddenTestsPath); }
+  try { results.check2 = await check2_ReferencePassesAll(slug, referenceCode, hiddenTestsPath); }
   catch (e) { ng(`Check 2 threw: ${(e as Error).message}`); results.check2 = false; }
 
-  try { results.check3 = await check3_GraderConsistency(referenceCode, hiddenTestsPath); }
+  try { results.check3 = await check3_GraderConsistency(slug, referenceCode, hiddenTestsPath); }
   catch (e) { ng(`Check 3 threw: ${(e as Error).message}`); results.check3 = false; }
 
-  try { results.check4 = await check4_BadPatchRejected(badPatchCode, hiddenTestsPath); }
+  try { results.check4 = await check4_BadPatchRejected(slug, badPatchCode, hiddenTestsPath); }
   catch (e) { ng(`Check 4 threw: ${(e as Error).message}`); results.check4 = false; }
 
   // Summary

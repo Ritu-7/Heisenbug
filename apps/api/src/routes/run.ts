@@ -14,8 +14,10 @@ const execFileAsync = promisify(execFile);
 
 // ── Config ─────────────────────────────────────────────────────────────────
 
-const SESSION_IMAGE = "heisenbug-session-runner:latest";
-const GRADER_IMAGE  = "heisenbug-grader-runner:latest";
+// Image names are derived from the problem slug — no special-casing needed.
+// Each problem gets its own pair of images built at `npm run docker:build`.
+const sessionImage = (slug: string) => `heisenbug-session-runner-${slug}:latest`;
+const graderImage  = (slug: string) => `heisenbug-grader-runner-${slug}:latest`;
 
 // Hidden tests live on the HOST — never inside any container image
 // routes/ → src/ → api/ → apps/ → monorepo root → packages/problems/…
@@ -251,7 +253,7 @@ router.post("/:id/run", requireAuth, async (req: Request<{ id: string }>, res: R
 
   try {
     const { result, rawOutput: raw } = await runInDocker({
-      image: SESSION_IMAGE,
+      image: sessionImage(slug),
       candidateCode,
       slug,
       jestArgs: [`--testPathPattern="tests/visible"`],
@@ -342,7 +344,7 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
 
   try {
     const { result, rawOutput } = await runInDocker({
-      image: GRADER_IMAGE,
+      image: graderImage(slug),
       candidateCode,
       slug,
       jestArgs: [], // run all tests (visible + hidden)
