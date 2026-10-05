@@ -1,0 +1,17 @@
+{
+  "name": "sec-xss-001",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Problem pack: Comment previews execute attacker-controlled HTML",
+  "scripts": {
+    "test": "jest",
+    "test:visible": "jest --testPathPattern='tests/visible'",
+    "test:all": "jest"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}

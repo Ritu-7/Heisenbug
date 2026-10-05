@@ -413,6 +413,65 @@ async function main() {
   });
   console.log(`  ✓ Variant:        ${variant3.id}`);
 
+  // ── Seed problem 4: sec-xss-001 ───────────────────────────────────────────
+  const problem4 = await prisma.problem.upsert({
+    where: { slug: "sec-xss-001" },
+    update: {},
+    create: {
+      slug: "sec-xss-001",
+      title: "Comment previews execute attacker-controlled HTML",
+      track: "security",
+      difficulty: "medium",
+      estMinutes: 30,
+      skills: ["xss", "input-sanitization", "output-encoding"],
+      stack: "node-express",
+    },
+  });
+  console.log(`  ✓ Problem: ${problem4.id} (${problem4.slug})`);
+
+  const descriptionMdXss = fs.readFileSync(
+    require("path").join(__dirname, "../../problems/sec-xss-001/DESCRIPTION.md"),
+    "utf-8"
+  );
+
+  const existingVersion4 = await prisma.problemVersion.findUnique({
+    where: { problemId_version: { problemId: problem4.id, version: 1 } },
+  });
+
+  let version4;
+  if (existingVersion4) {
+    version4 = await prisma.problemVersion.update({
+      where: { id: existingVersion4.id },
+      data: { status: "PUBLISHED", descriptionMd: descriptionMdXss },
+    });
+  } else {
+    version4 = await prisma.problemVersion.create({
+      data: {
+        problemId: problem4.id,
+        version: 1,
+        status: "PUBLISHED",
+        descriptionMd: descriptionMdXss,
+        editorialMd: "",
+        solutionMd: "",
+      },
+    });
+  }
+  console.log(`  ✓ ProblemVersion: ${version4.id} (v${version4.version}, ${version4.status})`);
+
+  const variantId4 = `${version4.id}_default`;
+  const variant4 = await prisma.variant.upsert({
+    where: { id: variantId4 },
+    update: {},
+    create: {
+      id: variantId4,
+      versionId: version4.id,
+      paramsJson: {
+        variant: "default",
+      },
+    },
+  });
+  console.log(`  ✓ Variant:        ${variant4.id}`);
+
   console.log("\n✅ Seed complete.");
   console.log("\n📋 Test credentials:");
   console.log(`   Candidate: ${CANDIDATE_EMAIL} / ${CANDIDATE_PASSWORD}`);
@@ -427,4 +486,5 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+
 

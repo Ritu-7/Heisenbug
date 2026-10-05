@@ -1,0 +1,9 @@
+{
+  "slug": "sec-xss-001",
+  "title": "Comment previews execute attacker-controlled HTML",
+  "version": 1,
+  "entryFile": "src/comments.js",
+  "language": "javascript",
+  "testFramework": "jest",
+  "testCommand": "npx jest --json --no-coverage --forceExit"
+}
