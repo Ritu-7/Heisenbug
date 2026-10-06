@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState, useMemo } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { fetchProblems, type Problem } from "@/lib/api";
 import { DifficultyBadge, SkillBadge, TrackBadge } from "@/components/badge";
 import { cn } from "@/lib/utils";
@@ -11,9 +12,6 @@ import { cn } from "@/lib/utils";
 
 type DifficultyFilter = "all" | "easy" | "medium" | "hard";
 type StatusFilter = "all" | "not_started";
-// NOTE: "solved" / "in_progress" statuses will be added in a later chunk once
-// session-tracking-per-user is wired into this query. Currently every row
-// shows "Not started" because the catalogue endpoint doesn't yet join Sessions.
 
 // ── Sub-components ─────────────────────────────────────────────────────────
 
@@ -31,10 +29,10 @@ function ErrorBanner({ message }: { message: string }) {
   return (
     <div
       role="alert"
-      className="rounded-lg border border-fail/40 bg-fail-soft px-4 py-3 text-sm text-fail"
+      className="rounded-lg border border-fail/40 bg-fail-soft px-4 py-3 text-sm text-fail font-mono"
     >
       <span className="font-semibold">Could not load problems:</span> {message}
-      <p className="mt-1 text-xs text-fail/80">
+      <p className="mt-1 text-xs text-fail/80 font-sans">
         Make sure the API server is running on{" "}
         <code className="font-mono">{process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"}</code>
         .
@@ -44,24 +42,27 @@ function ErrorBanner({ message }: { message: string }) {
 }
 
 function EmptyState({ filtered }: { filtered: boolean }) {
+  const reduce = useReducedMotion();
   return (
-    <div className="py-16 text-center text-text-secondary">
+    <motion.div
+      initial={reduce ? false : { opacity: 0, scale: 0.98 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.98 }}
+      transition={{ duration: 0.2 }}
+      className="py-16 text-center text-text-secondary"
+    >
       {filtered ? (
         <>
-          <p className="text-sm">No problems match these filters.</p>
-          <p className="mt-1 text-xs">Try clearing a filter above.</p>
+          <p className="text-sm font-medium text-text">No problems match these filters.</p>
+          <p className="mt-1 text-xs text-text-secondary">Try clearing a filter above.</p>
         </>
       ) : (
-        <p className="text-sm">No problems in the database yet.</p>
+        <p className="text-sm font-medium text-text">No problems in the database yet.</p>
       )}
-    </div>
+    </motion.div>
   );
 }
 
-// ── Status display ─────────────────────────────────────────────────────────
-// KNOWN GAP: Status is always "Not started" until GET /api/problems includes
-// a join on the Session table filtered by the authenticated user.
-// Tracked: https://github.com/heisenbug/heisenbug/issues/12 (placeholder)
 function StatusChip() {
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-text-secondary font-mono">
@@ -72,50 +73,64 @@ function StatusChip() {
 }
 
 // ── Problem row ────────────────────────────────────────────────────────────
-function ProblemRow({ problem }: { problem: Problem }) {
+function ProblemRow({ problem, index }: { problem: Problem; index: number }) {
+  const reduce = useReducedMotion();
+
   return (
-    <Link
-      href={`/problems/${problem.slug}`}
-      className={cn(
-        "group flex items-center gap-4 px-4 py-3.5",
-        "rounded-lg border border-border bg-surface",
-        "hover:border-accent/40 hover:bg-accent-soft/30 transition-colors duration-150",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-      )}
+    <motion.div
+      layout
+      initial={reduce ? false : { opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.98 }}
+      transition={{
+        duration: 0.2,
+        delay: Math.min(index * 0.04, 0.2), // cap delay so long lists don't take forever
+        layout: { duration: 0.2 },
+      }}
     >
-      {/* Title + track */}
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-text group-hover:text-accent transition-colors">
-          {problem.title}
-        </p>
-        <div className="mt-1 flex items-center gap-2">
-          <TrackBadge track={problem.track} />
-          <span className="text-xs text-text-secondary font-mono">{problem.stack}</span>
+      <Link
+        href={`/problems/${problem.slug}`}
+        className={cn(
+          "group flex items-center gap-4 px-4 py-3.5",
+          "rounded-lg border border-border bg-surface",
+          "hover:border-accent/40 hover:bg-accent-soft/30 transition-colors duration-150",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+        )}
+      >
+        {/* Title + track */}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-text group-hover:text-accent transition-colors">
+            {problem.title}
+          </p>
+          <div className="mt-1 flex items-center gap-2">
+            <TrackBadge track={problem.track} />
+            <span className="text-xs text-text-secondary font-mono">{problem.stack}</span>
+          </div>
         </div>
-      </div>
 
-      {/* Skills */}
-      <div className="hidden sm:flex flex-wrap gap-1 max-w-[220px]">
-        {problem.skills.map((skill) => (
-          <SkillBadge key={skill} skill={skill} />
-        ))}
-      </div>
+        {/* Skills */}
+        <div className="hidden sm:flex flex-wrap gap-1 max-w-[220px]">
+          {problem.skills.map((skill) => (
+            <SkillBadge key={skill} skill={skill} />
+          ))}
+        </div>
 
-      {/* Difficulty */}
-      <div className="w-20 text-right">
-        <DifficultyBadge difficulty={problem.difficulty} />
-      </div>
+        {/* Difficulty */}
+        <div className="w-20 text-right">
+          <DifficultyBadge difficulty={problem.difficulty} />
+        </div>
 
-      {/* Est. time */}
-      <div className="w-20 text-right text-xs text-text-secondary font-mono tabular-nums hidden md:block">
-        {problem.estMinutes} min
-      </div>
+        {/* Est. time */}
+        <div className="w-20 text-right text-xs text-text-secondary font-mono tabular-nums hidden md:block">
+          {problem.estMinutes} min
+        </div>
 
-      {/* Status (KNOWN GAP — always "Not started" until chunk 5) */}
-      <div className="w-24 text-right">
-        <StatusChip />
-      </div>
-    </Link>
+        {/* Status */}
+        <div className="w-24 text-right">
+          <StatusChip />
+        </div>
+      </Link>
+    </motion.div>
   );
 }
 
@@ -139,7 +154,6 @@ function FilterBar({
   skill, setSkill,
   status, setStatus,
 }: FilterBarProps) {
-  // Derive unique tracks and skills from the real API data
   const tracks = useMemo(
     () => ["all", ...Array.from(new Set(problems.map((p) => p.track))).sort()],
     [problems],
@@ -211,30 +225,23 @@ function FilterBar({
 // ── Main page ──────────────────────────────────────────────────────────────
 
 export default function ProblemsPage() {
-  // ── Real TanStack Query call against GET /api/problems ──────────────────
-  // isLoading = true while the network request is in-flight (shows skeleton).
-  // isError = true if the fetch throws (e.g. API server down) — shows banner.
-  // data comes from real Postgres rows, not a local array.
+  const reduce = useReducedMotion();
   const { data: problems = [], isLoading, isError, error } = useQuery({
     queryKey: ["problems"],
     queryFn: fetchProblems,
   });
 
-  // ── Filter state ────────────────────────────────────────────────────────
   const [difficulty, setDifficulty] = useState<DifficultyFilter>("all");
   const [track, setTrack] = useState<string>("all");
   const [skill, setSkill] = useState<string>("all");
   const [status, setStatus] = useState<StatusFilter>("all");
 
-  // ── Client-side filter applied to real API results ──────────────────────
   const filtered = useMemo(() => {
     return problems.filter((p) => {
       if (difficulty !== "all" && p.difficulty !== difficulty) return false;
       if (track !== "all" && p.track !== track) return false;
       if (skill !== "all" && !p.skills.includes(skill)) return false;
-      // Status: all rows are "not_started" until chunk 5, so this filter
-      // always matches right now — but the logic is correct for future states.
-      if (status === "not_started") return true; // every row passes
+      if (status === "not_started") return true;
       return true;
     });
   }, [problems, difficulty, track, skill, status]);
@@ -245,18 +252,28 @@ export default function ProblemsPage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-10">
       {/* ── Header ── */}
-      <div className="mb-8">
+      <motion.div
+        initial={reduce ? false : { opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.22 }}
+        className="mb-8"
+      >
         <h1 className="font-serif text-3xl font-semibold text-text tracking-tight">
           Problem Catalogue
         </h1>
         <p className="mt-2 text-sm text-text-secondary">
           Pick a ticket, fix the bug. Every problem is sourced from a real Postgres instance.
         </p>
-      </div>
+      </motion.div>
 
       {/* ── Filters ── */}
       {!isLoading && !isError && (
-        <div className="mb-5">
+        <motion.div
+          initial={reduce ? false : { opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+          className="mb-5"
+        >
           <FilterBar
             problems={problems}
             difficulty={difficulty} setDifficulty={setDifficulty}
@@ -264,7 +281,7 @@ export default function ProblemsPage() {
             skill={skill} setSkill={setSkill}
             status={status} setStatus={setStatus}
           />
-        </div>
+        </motion.div>
       )}
 
       {/* ── Results header ── */}
@@ -274,7 +291,6 @@ export default function ProblemsPage() {
             {filtered.length} problem{filtered.length !== 1 ? "s" : ""}
             {hasActiveFilter ? " (filtered)" : ""}
           </p>
-          {/* Column headers */}
           <div className="hidden md:flex items-center gap-4 text-xs text-text-secondary font-medium pr-1">
             <span className="w-20 text-right">Difficulty</span>
             <span className="w-20 text-right">Est. time</span>
@@ -287,22 +303,23 @@ export default function ProblemsPage() {
       {isLoading && <LoadingSkeleton />}
       {isError && <ErrorBanner message={(error as Error).message} />}
       {!isLoading && !isError && (
-        <div className="space-y-2">
-          {filtered.length === 0 ? (
-            <EmptyState filtered={hasActiveFilter} />
-          ) : (
-            filtered.map((problem) => (
-              <ProblemRow key={problem.id} problem={problem} />
-            ))
-          )}
-        </div>
+        <motion.div layout className="space-y-2">
+          <AnimatePresence mode="popLayout" initial={false}>
+            {filtered.length === 0 ? (
+              <EmptyState key="empty" filtered={hasActiveFilter} />
+            ) : (
+              filtered.map((problem, index) => (
+                <ProblemRow key={problem.id} problem={problem} index={index} />
+              ))
+            )}
+          </AnimatePresence>
+        </motion.div>
       )}
 
       {/* ── Footer note ── */}
       {!isLoading && !isError && (
-        <p className="mt-8 text-center text-xs text-text-secondary/60">
+        <p className="mt-8 text-center text-xs text-text-secondary/60 font-mono">
           Showing all {problems.length} problem{problems.length !== 1 ? "s" : ""} in the database.
-          More will appear here as they are added as real database records.
         </p>
       )}
     </div>

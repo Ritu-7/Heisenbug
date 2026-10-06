@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   fetchInvitation,
   startInvitation,
@@ -12,6 +13,7 @@ import { cn } from "@/lib/utils";
 export default function InvitePage({ params }: { params: { token: string } }) {
   const router = useRouter();
   const { token } = params;
+  const reduce = useReducedMotion();
 
   // Fetch invitation summary — real 410/409/404 responses from the API
   const {
@@ -29,9 +31,7 @@ export default function InvitePage({ params }: { params: { token: string } }) {
   const startMutation = useMutation({
     mutationFn: () => startInvitation(token),
     onSuccess: (data) => {
-      // Store the candidate's JWT so the Workspace can make authenticated calls
       setAuthToken(data.token);
-      // Redirect into the existing Workspace for the first problem
       const slug = data.session.version?.problem?.slug;
       if (slug) {
         router.push(`/problems/${slug}`);
@@ -72,16 +72,23 @@ export default function InvitePage({ params }: { params: { token: string } }) {
 
     return (
       <div className="flex min-h-[60vh] items-center justify-center px-4">
-        <div className="max-w-md w-full rounded-xl border border-border bg-surface p-8 text-center space-y-4">
-          <div className={cn(
-            "inline-flex h-12 w-12 items-center justify-center rounded-full text-2xl mx-auto",
-            status === 409 ? "bg-pass-soft text-pass" : "bg-fail-soft text-fail",
-          )}>
+        <motion.div
+          initial={reduce ? false : { opacity: 0, scale: 0.95, y: 12 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.25, ease: "easeOut" }}
+          className="max-w-md w-full rounded-xl border border-border bg-surface p-8 text-center space-y-4"
+        >
+          <div
+            className={cn(
+              "inline-flex h-12 w-12 items-center justify-center rounded-full text-2xl mx-auto font-mono",
+              status === 409 ? "bg-pass-soft text-pass" : "bg-fail-soft text-fail",
+            )}
+          >
             {icon}
           </div>
           <h1 className="font-serif text-xl font-semibold text-text">{title}</h1>
           <p className="text-sm text-text-secondary">{message}</p>
-        </div>
+        </motion.div>
       </div>
     );
   }
@@ -90,9 +97,14 @@ export default function InvitePage({ params }: { params: { token: string } }) {
   const expiresDate = new Date(invitation.expiresAt);
 
   return (
-    <div className="flex min-h-[60vh] items-center justify-center px-4">
-      <div className="max-w-md w-full rounded-xl border border-border bg-surface p-8 space-y-6">
-        {/* Heisenbug header */}
+    <div className="flex min-h-[60vh] items-center justify-center px-4 py-10">
+      <motion.div
+        initial={reduce ? false : { opacity: 0, scale: 0.96, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.28, ease: "easeOut" }}
+        className="max-w-md w-full rounded-xl border border-border bg-surface p-8 space-y-6"
+      >
+        {/* Header */}
         <div className="text-center space-y-1">
           <p className="text-xs font-mono text-text-secondary">You&apos;ve been invited to take</p>
           <h1 className="font-serif text-2xl font-semibold text-text">
@@ -134,25 +146,39 @@ export default function InvitePage({ params }: { params: { token: string } }) {
           <p>• Your final submission triggers grading against the full (hidden) test suite.</p>
         </div>
 
-        {startMutation.isError && (
-          <p className="text-xs text-fail font-mono">
-            Error: {(startMutation.error as Error).message}
-          </p>
-        )}
+        <AnimatePresence>
+          {startMutation.isError && (
+            <motion.p
+              initial={reduce ? false : { opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="text-xs text-fail font-mono"
+            >
+              Error: {(startMutation.error as Error).message}
+            </motion.p>
+          )}
+        </AnimatePresence>
 
         {/* Start button */}
         <button
           onClick={() => startMutation.mutate()}
           disabled={startMutation.isPending}
           className={cn(
-            "w-full py-3 rounded-md text-sm font-semibold transition-colors",
+            "w-full py-3 rounded-md text-sm font-semibold transition-colors font-mono",
             "bg-accent text-white hover:bg-accent/90",
             "disabled:opacity-50 disabled:cursor-not-allowed",
           )}
         >
-          {startMutation.isPending ? "Starting..." : "Start Assessment →"}
+          {startMutation.isPending ? (
+            <span className="inline-flex items-center justify-center gap-2">
+              <span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+              Starting...
+            </span>
+          ) : (
+            "Start Assessment →"
+          )}
         </button>
-      </div>
+      </motion.div>
     </div>
   );
 }

@@ -1,11 +1,12 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import Link from "next/link";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   fetchAssessment,
   createInvitation,
@@ -21,9 +22,16 @@ const InviteFormSchema = z.object({
 });
 type InviteFormValues = z.infer<typeof InviteFormSchema>;
 
-// ── Status badge ──────────────────────────────────────────────────────────
+// ── Status badge with change pulse animation ───────────────────────────────
 
-function StatusBadge({ status }: { status: InvitationStatus }) {
+function StatusBadge({
+  status,
+  hasChanged = false,
+}: {
+  status: InvitationStatus;
+  hasChanged?: boolean;
+}) {
+  const reduce = useReducedMotion();
   const map: Record<InvitationStatus, { label: string; className: string }> = {
     INVITED: {
       label: "Invited",
@@ -43,31 +51,60 @@ function StatusBadge({ status }: { status: InvitationStatus }) {
     },
   };
   const { label, className } = map[status];
+
   return (
-    <span
+    <motion.span
+      key={status}
+      initial={reduce || !hasChanged ? false : { scale: 1.25, filter: "brightness(1.4)" }}
+      animate={{ scale: 1, filter: "brightness(1)" }}
+      transition={{ duration: 0.4 }}
       className={cn(
-        "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold font-mono border",
+        "inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold font-mono border transition-colors",
         className,
       )}
     >
+      {hasChanged && !reduce && (
+        <span className="h-1.5 w-1.5 rounded-full bg-current mr-1 animate-ping" />
+      )}
       {label}
-    </span>
+    </motion.span>
   );
 }
 
 // ── Invitation row ────────────────────────────────────────────────────────
 
-function InvitationRow({ invitation }: { invitation: Invitation }) {
+function InvitationRow({
+  invitation,
+  index,
+  previousStatus,
+}: {
+  invitation: Invitation;
+  index: number;
+  previousStatus?: InvitationStatus;
+}) {
+  const reduce = useReducedMotion();
+  const hasChanged = previousStatus !== undefined && previousStatus !== invitation.status;
+
   return (
-    <div className="flex items-center justify-between px-4 py-3 rounded-lg border border-border bg-surface-2 text-sm">
+    <motion.div
+      layout
+      initial={reduce ? false : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.98 }}
+      transition={{ duration: 0.22, delay: index * 0.05 }}
+      className={cn(
+        "flex items-center justify-between px-4 py-3 rounded-lg border bg-surface-2 text-sm transition-colors",
+        hasChanged ? "border-accent/60 bg-accent-soft/20" : "border-border",
+      )}
+    >
       <div className="min-w-0">
         <p className="font-medium text-text truncate">{invitation.candidateEmail}</p>
         <p className="text-xs text-text-secondary font-mono mt-0.5">
           Expires {new Date(invitation.expiresAt).toLocaleDateString()}
         </p>
       </div>
-      <StatusBadge status={invitation.status} />
-    </div>
+      <StatusBadge status={invitation.status} hasChanged={hasChanged} />
+    </motion.div>
   );
 }
 
@@ -76,6 +113,7 @@ function InvitationRow({ invitation }: { invitation: Invitation }) {
 function InviteForm({ assessmentId }: { assessmentId: string }) {
   const queryClient = useQueryClient();
   const [lastLink, setLastLink] = useState<string | null>(null);
+  const reduce = useReducedMotion();
 
   const {
     register,
@@ -117,7 +155,7 @@ function InviteForm({ assessmentId }: { assessmentId: string }) {
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="px-4 py-2 rounded-md text-xs font-semibold bg-accent text-white hover:bg-accent/90 disabled:opacity-50 transition-colors whitespace-nowrap"
+          className="px-4 py-2 rounded-md text-xs font-semibold bg-accent text-white hover:bg-accent/90 disabled:opacity-50 transition-colors whitespace-nowrap font-mono"
         >
           {mutation.isPending ? "Sending..." : "Invite →"}
         </button>
@@ -129,19 +167,27 @@ function InviteForm({ assessmentId }: { assessmentId: string }) {
         </p>
       )}
 
-      {/* Real invite link — returned directly from the API */}
-      {lastLink && (
-        <div className="rounded-md border border-pass/30 bg-pass-soft p-3 space-y-1">
-          <p className="text-xs font-semibold text-pass">Invitation created — share this link:</p>
-          <p className="text-xs font-mono text-text break-all">{lastLink}</p>
-          <button
-            onClick={() => navigator.clipboard.writeText(lastLink)}
-            className="text-[10px] font-mono text-accent hover:underline mt-1"
+      {/* Animated invite link banner */}
+      <AnimatePresence>
+        {lastLink && (
+          <motion.div
+            initial={reduce ? false : { opacity: 0, y: -6, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="rounded-md border border-pass/30 bg-pass-soft p-3 space-y-1 overflow-hidden"
           >
-            Copy to clipboard
-          </button>
-        </div>
-      )}
+            <p className="text-xs font-semibold text-pass font-mono">Invitation created — share this link:</p>
+            <p className="text-xs font-mono text-text break-all">{lastLink}</p>
+            <button
+              onClick={() => navigator.clipboard.writeText(lastLink)}
+              className="text-[10px] font-mono text-accent hover:underline mt-1 inline-block"
+            >
+              Copy to clipboard
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -153,11 +199,26 @@ export default function AssessmentDetailPage({
 }: {
   params: { id: string };
 }) {
+  const reduce = useReducedMotion();
+  const prevStatusesRef = useRef<Map<string, InvitationStatus>>(new Map());
+
   const { data: assessment, isLoading, isError, error } = useQuery({
     queryKey: ["assessment", params.id],
     queryFn: () => fetchAssessment(params.id),
     refetchInterval: 15_000, // re-fetch every 15 s so status updates appear without manual refresh
   });
+
+  // Track status changes across refetches
+  const prevStatuses = new Map(prevStatusesRef.current);
+  useEffect(() => {
+    if (assessment?.invitations) {
+      const nextMap = new Map<string, InvitationStatus>();
+      for (const inv of assessment.invitations) {
+        nextMap.set(inv.id, inv.status);
+      }
+      prevStatusesRef.current = nextMap;
+    }
+  }, [assessment]);
 
   if (isLoading) {
     return (
@@ -173,7 +234,7 @@ export default function AssessmentDetailPage({
   if (isError || !assessment) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-10 space-y-3">
-        <p className="text-sm text-fail">{(error as Error)?.message ?? "Assessment not found"}</p>
+        <p className="text-sm text-fail font-mono">{(error as Error)?.message ?? "Assessment not found"}</p>
         <Link href="/recruiter/dashboard" className="text-xs text-accent hover:underline font-mono">
           ← Back to dashboard
         </Link>
@@ -184,7 +245,12 @@ export default function AssessmentDetailPage({
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 space-y-8">
       {/* Header */}
-      <div className="space-y-1">
+      <motion.div
+        initial={reduce ? false : { opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.22 }}
+        className="space-y-1"
+      >
         <Link
           href="/recruiter/dashboard"
           className="text-xs text-text-secondary hover:text-text font-mono transition-colors"
@@ -198,7 +264,7 @@ export default function AssessmentDetailPage({
           {assessment.invitations.length} invitation
           {assessment.invitations.length !== 1 ? "s" : ""}
         </p>
-      </div>
+      </motion.div>
 
       {/* Problems */}
       <section className="space-y-3">
@@ -207,8 +273,11 @@ export default function AssessmentDetailPage({
         </h2>
         <div className="space-y-2">
           {assessment.problems.map((ap, i) => (
-            <div
+            <motion.div
               key={ap.id}
+              initial={reduce ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.18, delay: i * 0.05 }}
               className="flex items-center gap-3 px-4 py-3 rounded-lg border border-border bg-surface"
             >
               <span className="text-xs font-mono text-text-secondary w-4 shrink-0">{i + 1}.</span>
@@ -218,7 +287,7 @@ export default function AssessmentDetailPage({
                 </p>
                 <p className="text-xs text-text-secondary font-mono">{ap.version.problem.slug}</p>
               </div>
-            </div>
+            </motion.div>
           ))}
         </div>
       </section>
@@ -231,7 +300,7 @@ export default function AssessmentDetailPage({
         <InviteForm assessmentId={assessment.id} />
       </section>
 
-      {/* Invitation list with real derived status */}
+      {/* Invitation list with status change highlighting */}
       <section className="space-y-3">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-text-secondary font-mono">
           Invitations ({assessment.invitations.length})
@@ -239,15 +308,22 @@ export default function AssessmentDetailPage({
 
         {assessment.invitations.length === 0 ? (
           <div className="py-10 text-center text-text-secondary">
-            <p className="text-sm">No invitations sent yet.</p>
-            <p className="text-xs mt-1">Use the form above to invite a candidate.</p>
+            <p className="text-sm font-medium text-text">No invitations sent yet.</p>
+            <p className="text-xs text-text-secondary mt-1">Use the form above to invite a candidate.</p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {assessment.invitations.map((inv) => (
-              <InvitationRow key={inv.id} invitation={inv} />
-            ))}
-          </div>
+          <motion.div layout className="space-y-2">
+            <AnimatePresence initial={false}>
+              {assessment.invitations.map((inv, index) => (
+                <InvitationRow
+                  key={inv.id}
+                  invitation={inv}
+                  index={index}
+                  previousStatus={prevStatuses.get(inv.id)}
+                />
+              ))}
+            </AnimatePresence>
+          </motion.div>
         )}
       </section>
     </div>
