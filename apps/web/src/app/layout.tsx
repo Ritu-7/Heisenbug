@@ -12,6 +12,30 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
+        {/*
+          Inline theme-init script — runs synchronously before first paint so
+          there is no flash of wrong theme. Reads localStorage("heisenbug-theme");
+          falls back to prefers-color-scheme; defaults to light if both absent.
+          Wrapped in try/catch because localStorage can throw in private browsing.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+(function() {
+  try {
+    var stored = localStorage.getItem('heisenbug-theme');
+    if (stored === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else if (stored === 'light') {
+      // explicit light — do nothing (class absent = light)
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.classList.add('dark');
+    }
+  } catch (e) {}
+})();
+            `.trim(),
+          }}
+        />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link

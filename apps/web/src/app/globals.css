@@ -42,7 +42,19 @@
     --text-secondary: #9AA9B7;
     --border:         #2B3743;
     --accent:         #9C85E0;
-    /* pass / fail / warning intentionally inherit light values */
+    --accent-soft:    #2D2352;
+
+    /* Pass — cooler green, lighter for legibility on dark surface */
+    --pass:           #4ADE80;
+    --pass-soft:      #0D2D1A;
+
+    /* Fail — desaturated red, lifted to stay legible without vibrating */
+    --fail:           #F87171;
+    --fail-soft:      #2D1313;
+
+    /* Warning — amber, lightened so it reads on dark background */
+    --warning:        #FCD34D;
+    --warning-soft:   #2B2007;
   }
 
   html {

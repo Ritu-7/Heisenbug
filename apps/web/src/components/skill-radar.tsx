@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef, useEffect, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 
 interface SkillScore {
   name: string;
@@ -24,18 +25,37 @@ export function SkillRadar({ skills = DEFAULT_SKILLS, hasData = false }: SkillRa
   const center = 120;
   const radius = 80;
   const count = skills.length;
+  const reduce = useReducedMotion();
+
+  // Track whether this is the first time hasData becomes true — only animate once
+  const hasAnimated = useRef(false);
+  const [animating, setAnimating] = useState(false);
+
+  useEffect(() => {
+    if (hasData && !hasAnimated.current) {
+      hasAnimated.current = true;
+      if (!reduce) {
+        setAnimating(true);
+        const t = setTimeout(() => setAnimating(false), 900);
+        return () => clearTimeout(t);
+      }
+    }
+  }, [hasData, reduce]);
 
   const points = useMemo(() => {
     return skills.map((skill, index) => {
       const angle = (Math.PI * 2 * index) / count - Math.PI / 2;
-      const val = hasData ? skill.score / 100 : 0; // if no data, point is at center (0)
+      const val = hasData ? skill.score / 100 : 0;
       const x = center + radius * val * Math.cos(angle);
       const y = center + radius * val * Math.sin(angle);
       return { x, y, angle, label: skill.name };
     });
-  }, [skills, count, radius, center, hasData]);
+  }, [skills, count, hasData]);
 
-  // Grid concentric polygons (25%, 50%, 75%, 100%)
+  // During animation, interpolate polygon from center outward using CSS clip
+  const polygonPoints = points.map((p) => `${p.x},${p.y}`).join(" ");
+
+  // Grid concentric polygons
   const gridLevels = [0.25, 0.5, 0.75, 1.0];
 
   return (
@@ -108,25 +128,43 @@ export function SkillRadar({ skills = DEFAULT_SKILLS, hasData = false }: SkillRa
             );
           })}
 
-          {/* Data Polygon */}
+          {/* Data Polygon — animates from center outward on first real data load */}
           {hasData && (
-            <polygon
-              points={points.map((p) => `${p.x},${p.y}`).join(" ")}
+            <motion.polygon
+              points={polygonPoints}
               fill="var(--accent-soft)"
               fillOpacity="0.6"
               stroke="var(--accent)"
               strokeWidth="2"
+              initial={animating || hasAnimated.current
+                ? reduce
+                  ? false
+                  : { scale: 0, opacity: 0, originX: "120px", originY: "120px" }
+                : false}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+              style={{ transformOrigin: `${center}px ${center}px` }}
             />
           )}
 
           {/* Data Points */}
           {hasData &&
             points.map((p, idx) => (
-              <circle key={idx} cx={p.x} cy={p.y} r="3" fill="var(--accent)" />
+              <motion.circle
+                key={idx}
+                cx={p.x}
+                cy={p.y}
+                r="3"
+                fill="var(--accent)"
+                initial={animating ? { opacity: 0, scale: 0 } : false}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.15, delay: 0.5 + idx * 0.06 }}
+                style={{ transformOrigin: `${p.x}px ${p.y}px` }}
+              />
             ))}
         </svg>
 
-        {/* Empty state overlay badge */}
+        {/* Empty state overlay */}
         {!hasData && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-surface/80 backdrop-blur-[1px] p-4 text-center rounded-lg">
             <span className="text-xs font-medium text-text-secondary font-mono mb-1">

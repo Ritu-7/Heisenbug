@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { fetchCurrentUser } from "@/lib/api";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export function Nav() {
   const pathname = usePathname();
@@ -53,6 +54,9 @@ export function Nav() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Theme toggle — visible on every page */}
+          <ThemeToggle />
+
           {user ? (
             <span className="text-xs text-text-secondary font-mono bg-surface-2 px-2 py-1 rounded border border-border">
               {user.email}
