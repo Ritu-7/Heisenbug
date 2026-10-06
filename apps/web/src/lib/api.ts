@@ -186,6 +186,12 @@ export async function fetchUserSessions(): Promise<Session[]> {
   return data.data;
 }
 
+/** Fetch a specific session by ID */
+export async function fetchSession(sessionId: string): Promise<Session> {
+  const data = await apiFetch<SessionResponse>(`/api/sessions/${sessionId}`);
+  return data.data;
+}
+
 /** Create a new session */
 export async function createSession(versionId: string, mode: "PRACTICE" | "ASSESSMENT" = "PRACTICE"): Promise<Session> {
   const data = await apiFetch<SessionResponse>("/api/sessions", {

@@ -3,7 +3,8 @@
 import dynamic from "next/dynamic";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
@@ -12,6 +13,7 @@ import { useTheme } from "@/lib/use-theme";
 import {
   fetchStarterCode,
   fetchUserSessions,
+  fetchSession,
   fetchSessionEvents,
   postSessionEvent,
   createSession,
@@ -69,23 +71,112 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 // ── Sub-components ─────────────────────────────────────────────────────────
 
-function TabBar({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void }) {
+function CountdownTimer({ deadline }: { deadline: string }) {
+  const reduce = useReducedMotion();
+  const [timeLeftMs, setTimeLeftMs] = useState<number>(() => {
+    return Math.max(0, new Date(deadline).getTime() - Date.now());
+  });
+
+  useEffect(() => {
+    // Initial sync
+    setTimeLeftMs(Math.max(0, new Date(deadline).getTime() - Date.now()));
+
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, new Date(deadline).getTime() - Date.now());
+      setTimeLeftMs(remaining);
+      if (remaining <= 0) {
+        clearInterval(interval);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [deadline]);
+
+  const totalSeconds = Math.floor(timeLeftMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const isExpired = timeLeftMs <= 0;
+  const isCritical = !isExpired && timeLeftMs <= 60 * 1000; // <= 1 minute
+  const isWarning = !isExpired && timeLeftMs <= 5 * 60 * 1000; // <= 5 minutes
+
+  const formattedTime = isExpired
+    ? "00:00"
+    : hours > 0
+    ? `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+    : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+
+  // Pulse animation respecting reduced motion
+  const pulseVariants = reduce
+    ? undefined
+    : isCritical
+    ? {
+        scale: [1, 1.04, 1],
+        opacity: [1, 0.8, 1],
+        transition: { duration: 0.9, repeat: Infinity, ease: "easeInOut" as const },
+      }
+    : isWarning
+    ? {
+        opacity: [1, 0.72, 1],
+        transition: { duration: 1.8, repeat: Infinity, ease: "easeInOut" as const },
+      }
+    : undefined;
+
+  return (
+    <motion.div
+      animate={pulseVariants}
+      className={cn(
+        "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono font-semibold transition-colors border select-none",
+        isExpired && "bg-fail-soft text-fail border-fail/40",
+        isCritical && "bg-fail-soft text-fail border-fail/40",
+        !isCritical && isWarning && "bg-warning-soft text-warning border-warning/40",
+        !isWarning && !isExpired && "bg-surface-2 text-text border-border",
+      )}
+      title={isExpired ? "Time limit exceeded" : `Assessment deadline: ${new Date(deadline).toLocaleTimeString()}`}
+    >
+      <span className="text-xs shrink-0">⏱</span>
+      <span>{formattedTime}</span>
+      {isExpired && <span className="text-[10px] uppercase font-normal font-sans">(Expired)</span>}
+    </motion.div>
+  );
+}
+
+function TabBar({
+  active,
+  onSelect,
+  isAssessment,
+}: {
+  active: Tab;
+  onSelect: (t: Tab) => void;
+  isAssessment: boolean;
+}) {
+  const lockedTabs: Set<Tab> = isAssessment
+    ? new Set(["hints", "editorial", "solution"])
+    : new Set();
+
   return (
     <div className="flex border-b border-border bg-surface overflow-x-auto shrink-0">
-      {TABS.map((tab) => (
-        <button
-          key={tab.id}
-          onClick={() => onSelect(tab.id)}
-          className={cn(
-            "px-4 py-3 text-xs font-medium whitespace-nowrap transition-colors border-b-2 -mb-px",
-            active === tab.id
-              ? "border-accent text-accent"
-              : "border-transparent text-text-secondary hover:text-text",
-          )}
-        >
-          {tab.label}
-        </button>
-      ))}
+      {TABS.map((tab) => {
+        const isLocked = lockedTabs.has(tab.id);
+        return (
+          <button
+            key={tab.id}
+            onClick={() => !isLocked && onSelect(tab.id)}
+            disabled={isLocked}
+            title={isLocked ? "Locked in Assessment Mode" : undefined}
+            className={cn(
+              "px-4 py-3 text-xs font-medium whitespace-nowrap transition-colors border-b-2 -mb-px inline-flex items-center gap-1.5",
+              isLocked && "opacity-40 cursor-not-allowed text-text-secondary hover:text-text-secondary border-transparent",
+              !isLocked && active === tab.id && "border-accent text-accent",
+              !isLocked && active !== tab.id && "border-transparent text-text-secondary hover:text-text",
+            )}
+          >
+            <span>{tab.label}</span>
+            {isLocked && <span className="text-[10px] opacity-75" aria-label="locked">🔒</span>}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -140,7 +231,6 @@ function VerdictPanel({
   if (!result) return null;
 
   const totalWeight = result.checks.reduce((sum, c) => sum + c.weight, 0);
-  // Submit gets a slightly more pronounced entrance than Run
   const bannerVariants = {
     hidden:  { opacity: 0, y: kind === "submit" ? 16 : 8 },
     visible: { opacity: 1, y: 0, transition: { duration: kind === "submit" ? 0.28 : 0.2 } },
@@ -178,7 +268,6 @@ function VerdictPanel({
             animate={{ opacity: 1, x: 0 }}
             transition={{
               duration: 0.16,
-              // Submit: slightly longer stagger for drama; Run: quick
               delay: kind === "submit" ? 0.18 + idx * 0.07 : 0.08 + idx * 0.04,
             }}
             className="flex items-start gap-2 text-[11px] font-mono"
@@ -261,12 +350,16 @@ function TabContent({
   activeTab,
   problem,
   sessionId,
+  isAssessment,
 }: {
   activeTab: Tab;
   problem: ProblemFull;
   sessionId: string | null;
+  isAssessment: boolean;
 }) {
   const reduce = useReducedMotion();
+  const isLocked = isAssessment && (activeTab === "hints" || activeTab === "editorial" || activeTab === "solution");
+
   return (
     <div className="flex-1 overflow-y-auto relative">
       <AnimatePresence mode="wait" initial={false}>
@@ -278,20 +371,34 @@ function TabContent({
           transition={{ duration: 0.15 }}
           className="h-full"
         >
-          {activeTab === "description" && (
-            <MarkdownContent md={problem.currentVersion.descriptionMd} emptyMessage="Description not yet written." />
-          )}
-          {activeTab === "hints" && (
-            <MarkdownContent md="" emptyMessage="No hints written yet for this problem." />
-          )}
-          {activeTab === "editorial" && (
-            <MarkdownContent md={problem.currentVersion.editorialMd} emptyMessage="Editorial not yet written. Come back after attempting the problem." />
-          )}
-          {activeTab === "solution" && (
-            <MarkdownContent md={problem.currentVersion.solutionMd} emptyMessage="Reference solution not yet written." />
-          )}
-          {activeTab === "submissions" && (
-            <SubmissionsPanel sessionId={sessionId} />
+          {isLocked ? (
+            <div className="flex flex-col items-center justify-center h-full p-8 text-center text-text-secondary space-y-3">
+              <div className="h-10 w-10 rounded-full bg-surface-2 border border-border flex items-center justify-center text-lg">
+                🔒
+              </div>
+              <h3 className="font-serif text-base font-semibold text-text">Locked in Assessment Mode</h3>
+              <p className="text-xs max-w-sm">
+                Hints, editorial, and reference solutions are unconditionally disabled during timed assessments.
+              </p>
+            </div>
+          ) : (
+            <>
+              {activeTab === "description" && (
+                <MarkdownContent md={problem.currentVersion.descriptionMd} emptyMessage="Description not yet written." />
+              )}
+              {activeTab === "hints" && (
+                <MarkdownContent md="" emptyMessage="No hints written yet for this problem." />
+              )}
+              {activeTab === "editorial" && (
+                <MarkdownContent md={problem.currentVersion.editorialMd} emptyMessage="Editorial not yet written. Come back after attempting the problem." />
+              )}
+              {activeTab === "solution" && (
+                <MarkdownContent md={problem.currentVersion.solutionMd} emptyMessage="Reference solution not yet written." />
+              )}
+              {activeTab === "submissions" && (
+                <SubmissionsPanel sessionId={sessionId} />
+              )}
+            </>
           )}
         </motion.div>
       </AnimatePresence>
@@ -301,17 +408,6 @@ function TabContent({
 
 // ── Editor chrome: theme-aware dark/light wrapper ─────────────────────────
 
-/**
- * The Monaco editor column is styled to look like a VS Code-style editor chrome.
- * This IS an intentionally always-dark terminal-like aesthetic — HOWEVER, we make
- * it theme-aware so in light mode it uses a lighter VS Code "Light" palette rather
- * than fighting the page with a pitch-black panel.
- *
- * Dark mode:  bg-[#1e1e1e] tab bar bg-[#252526] border-[#3c3c3c] — classic VS Code Dark
- * Light mode: bg-[#f3f3f3] tab bar bg-[#ececec] border-[#e0e0e0] — VS Code Light palette
- *
- * Status bar stays #007acc (VS Code brand color) in both modes — that's intentional.
- */
 function EditorChrome({
   isDark,
   filename,
@@ -350,15 +446,16 @@ function EditorChrome({
   );
 }
 
-// ── Main page ──────────────────────────────────────────────────────────────
+// ── Workspace Content ──────────────────────────────────────────────────────
 
-export default function WorkspacePage({ params }: { params: { slug: string } }) {
-  const { slug } = params;
+function WorkspaceContent({ slug }: { slug: string }) {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const sessionIdParam = searchParams.get("sessionId");
   const reduce = useReducedMotion();
   const { isDark } = useTheme();
 
-  // Auto-login test user
+  // Auto-login test user if no token exists
   const [authed, setAuthed] = useState(false);
   useEffect(() => {
     async function init() {
@@ -396,6 +493,13 @@ export default function WorkspacePage({ params }: { params: { slug: string } }) 
     staleTime: Infinity,
   });
 
+  // ── Query: Specific session (if passed directly via query param) ──────
+  const { data: directSession } = useQuery({
+    queryKey: ["session", sessionIdParam],
+    queryFn: () => fetchSession(sessionIdParam!),
+    enabled: authed && !!sessionIdParam,
+  });
+
   // ── Query: User's sessions ────────────────────────────────────────────
   const { data: sessions = [] } = useQuery({
     queryKey: ["sessions"],
@@ -403,9 +507,22 @@ export default function WorkspacePage({ params }: { params: { slug: string } }) 
     enabled: authed,
   });
 
-  const activeSession: Session | undefined = sessions.find(
-    (s) => s.status === "ACTIVE" && (s.version?.problem as { slug: string } | undefined)?.slug === slug,
-  );
+  const activeSession: Session | undefined =
+    directSession ??
+    sessions.find(
+      (s) =>
+        (s.status === "ACTIVE" || s.status === "SUBMITTED") &&
+        (s.version?.problem as { slug: string } | undefined)?.slug === slug,
+    );
+
+  const isAssessment = activeSession?.mode === "ASSESSMENT";
+
+  // Force away from locked tabs if in assessment mode
+  useEffect(() => {
+    if (isAssessment && (activeTab === "hints" || activeTab === "editorial" || activeTab === "solution")) {
+      setActiveTab("description");
+    }
+  }, [isAssessment, activeTab]);
 
   // ── Mutation: Create session ──────────────────────────────────────────
   const createSessionMutation = useMutation({
@@ -500,9 +617,9 @@ export default function WorkspacePage({ params }: { params: { slug: string } }) 
     ? { ...submitResult.verdict, rawOutput: submitResult.rawOutput, durationMs: submitResult.durationMs }
     : runResult;
 
-  // Editor chrome colors — theme-aware (see EditorChrome for rationale)
+  // Editor chrome colors — theme-aware
   const editorBg = isDark ? "#1e1e1e" : "#f3f3f3";
-  const statusBarBg = "#007acc"; // VS Code brand blue — intentional in both modes
+  const statusBarBg = "#007acc"; // VS Code brand blue
 
   return (
     <div className="flex flex-col h-[calc(100vh-56px)] overflow-hidden">
@@ -515,13 +632,21 @@ export default function WorkspacePage({ params }: { params: { slug: string } }) 
           <div className="hidden sm:flex items-center gap-1.5">
             <TrackBadge track={problem.track} />
             <DifficultyBadge difficulty={problem.difficulty} />
+            {isAssessment && (
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase font-semibold bg-accent-soft text-accent border border-accent/30">
+                Assessment
+              </span>
+            )}
           </div>
         </div>
 
         <div className="flex items-center gap-3">
           <SaveStatus status={saveStatus} />
 
-          {activeSession ? (
+          {/* Assessment Mode countdown & status vs Practice Mode status */}
+          {isAssessment && activeSession?.deadline ? (
+            <CountdownTimer deadline={activeSession.deadline} />
+          ) : activeSession ? (
             <span className="inline-flex items-center gap-1.5 text-xs font-mono text-pass">
               <span className="h-1.5 w-1.5 rounded-full bg-pass animate-pulse" />
               Active session
@@ -603,11 +728,12 @@ export default function WorkspacePage({ params }: { params: { slug: string } }) 
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left: Description tabs */}
         <div className="w-[44%] flex flex-col border-r border-border min-h-0">
-          <TabBar active={activeTab} onSelect={setActiveTab} />
+          <TabBar active={activeTab} onSelect={setActiveTab} isAssessment={isAssessment} />
           <TabContent
             activeTab={activeTab}
             problem={problem}
             sessionId={activeSession?.id ?? null}
+            isAssessment={isAssessment}
           />
         </div>
 
@@ -646,7 +772,7 @@ export default function WorkspacePage({ params }: { params: { slug: string } }) 
             )}
           </div>
 
-          {/* Verdict panel — AnimatePresence so it animates in AND out */}
+          {/* Verdict panel */}
           <AnimatePresence mode="wait">
             {verdictToShow && (
               <VerdictPanel
@@ -657,19 +783,37 @@ export default function WorkspacePage({ params }: { params: { slug: string } }) 
             )}
           </AnimatePresence>
 
-          {/* Status bar — VS Code blue, intentional in both light and dark modes */}
+          {/* Status bar */}
           <div
             className="flex items-center justify-between px-4 py-1 shrink-0"
             style={{ background: statusBarBg }}
           >
             <span className="text-[10px] font-mono text-white/80">{starterCode?.filename ?? "src/charge.js"}</span>
             <div className="flex items-center gap-4 text-[10px] font-mono text-white/70">
-              <span>JavaScript</span>
+              <span>{isAssessment ? "Mode: Assessment" : "Mode: Practice"}</span>
               {activeSession && <span title={`Session: ${activeSession.id}`}>Session: {activeSession.id.slice(-8)}</span>}
             </div>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Main Page with Suspense boundary ──────────────────────────────────────
+
+export default function WorkspacePage({ params }: { params: { slug: string } }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-[calc(100vh-56px)] items-center justify-center">
+          <span className="text-sm text-text-secondary font-mono animate-pulse">
+            Loading workspace...
+          </span>
+        </div>
+      }
+    >
+      <WorkspaceContent slug={params.slug} />
+    </Suspense>
   );
 }

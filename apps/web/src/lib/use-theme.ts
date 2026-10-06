@@ -12,14 +12,14 @@ import { useEffect, useState } from "react";
  *
  * Returns `{ isDark }` — true when `.dark` is present on <html>.
  */
-export function useTheme(): { isDark: boolean } {
-  const [isDark, setIsDark] = useState(() => {
-    // Safe initialiser: read DOM only on client, default false during SSR
-    if (typeof document === "undefined") return false;
-    return document.documentElement.classList.contains("dark");
-  });
+export function useTheme(): { isDark: boolean; mounted: boolean } {
+  const [mounted, setMounted] = useState(false);
+  const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+    setIsDark(document.documentElement.classList.contains("dark"));
+
     // MutationObserver watching the class list on <html>
     const observer = new MutationObserver(() => {
       setIsDark(document.documentElement.classList.contains("dark"));
@@ -30,11 +30,8 @@ export function useTheme(): { isDark: boolean } {
       attributeFilter: ["class"],
     });
 
-    // Sync once on mount in case the initial useState ran during SSR
-    setIsDark(document.documentElement.classList.contains("dark"));
-
     return () => observer.disconnect();
   }, []);
 
-  return { isDark };
+  return { isDark, mounted };
 }

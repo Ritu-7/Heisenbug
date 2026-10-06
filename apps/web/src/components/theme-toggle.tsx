@@ -58,7 +58,7 @@ function MoonIcon() {
  * on click. The no-flash inline script in layout.tsx handles the initial paint.
  */
 export function ThemeToggle() {
-  const { isDark } = useTheme();
+  const { isDark, mounted } = useTheme();
 
   function toggle() {
     const next = !isDark;
@@ -77,15 +77,15 @@ export function ThemeToggle() {
   return (
     <button
       onClick={toggle}
-      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      title={isDark ? "Light mode" : "Dark mode"}
+      aria-label={mounted ? (isDark ? "Switch to light mode" : "Switch to dark mode") : "Toggle theme"}
+      title={mounted ? (isDark ? "Light mode" : "Dark mode") : "Toggle theme"}
       className={
         "inline-flex items-center justify-center w-8 h-8 rounded-md border border-border " +
         "text-text-secondary hover:text-text hover:bg-surface-2 transition-colors focus-visible:outline-none " +
         "focus-visible:ring-2 focus-visible:ring-accent"
       }
     >
-      {isDark ? <SunIcon /> : <MoonIcon />}
+      {mounted ? (isDark ? <SunIcon /> : <MoonIcon />) : <span className="w-4 h-4" />}
     </button>
   );
 }

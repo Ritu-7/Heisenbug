@@ -34,7 +34,7 @@ export default function InvitePage({ params }: { params: { token: string } }) {
       setAuthToken(data.token);
       const slug = data.session.version?.problem?.slug;
       if (slug) {
-        router.push(`/problems/${slug}`);
+        router.push(`/problems/${slug}?sessionId=${data.session.id}`);
       }
     },
   });
