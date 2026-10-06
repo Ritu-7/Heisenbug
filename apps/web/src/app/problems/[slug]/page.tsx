@@ -6,6 +6,8 @@ import Link from "next/link";
 import { useEffect, useState, useCallback, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { useTheme } from "@/lib/use-theme";
 
 import {
   fetchStarterCode,
@@ -116,7 +118,7 @@ function MarkdownContent({ md, emptyMessage }: { md: string; emptyMessage: strin
     <div className="prose prose-sm max-w-none text-text leading-relaxed p-4
       prose-headings:font-serif prose-headings:text-text
       prose-code:font-mono prose-code:text-accent prose-code:bg-accent-soft prose-code:px-1 prose-code:rounded
-      prose-pre:bg-[#1e1e1e] prose-pre:text-neutral-200 prose-pre:rounded-lg
+      prose-pre:bg-surface-2 prose-pre:text-text prose-pre:rounded-lg
       prose-a:text-accent prose-a:no-underline hover:prose-a:underline
       prose-table:text-sm prose-th:text-text-secondary
       prose-strong:text-text prose-blockquote:border-accent/40 prose-blockquote:text-text-secondary">
@@ -125,16 +127,36 @@ function MarkdownContent({ md, emptyMessage }: { md: string; emptyMessage: strin
   );
 }
 
-function VerdictPanel({ result, kind }: { result: RunResult | null; kind: "run" | "submit" }) {
+// ── Verdict panel with staggered animations ────────────────────────────────
+
+function VerdictPanel({
+  result,
+  kind,
+}: {
+  result: RunResult | null;
+  kind: "run" | "submit";
+}) {
+  const reduce = useReducedMotion();
   if (!result) return null;
 
   const totalWeight = result.checks.reduce((sum, c) => sum + c.weight, 0);
+  // Submit gets a slightly more pronounced entrance than Run
+  const bannerVariants = {
+    hidden:  { opacity: 0, y: kind === "submit" ? 16 : 8 },
+    visible: { opacity: 1, y: 0, transition: { duration: kind === "submit" ? 0.28 : 0.2 } },
+  };
 
   return (
-    <div className={cn(
-      "border-t px-4 py-3 space-y-2 shrink-0",
-      result.passed ? "border-pass/30 bg-pass-soft" : "border-fail/30 bg-fail-soft",
-    )}>
+    <motion.div
+      key={`verdict-${kind}-${result.score}`}
+      variants={reduce ? undefined : bannerVariants}
+      initial={reduce ? false : "hidden"}
+      animate="visible"
+      className={cn(
+        "border-t px-4 py-3 space-y-2 shrink-0",
+        result.passed ? "border-pass/30 bg-pass-soft" : "border-fail/30 bg-fail-soft",
+      )}
+    >
       <div className="flex items-center justify-between">
         <span className={cn("text-xs font-semibold font-mono", result.passed ? "text-pass" : "text-fail")}>
           {kind === "run" ? "▶ Run result" : "🏁 Submit verdict"}
@@ -147,9 +169,20 @@ function VerdictPanel({ result, kind }: { result: RunResult | null; kind: "run" 
         </span>
       </div>
 
+      {/* Staggered check rows */}
       <div className="space-y-1">
-        {result.checks.map((check: VerdictCheck) => (
-          <div key={check.id} className="flex items-start gap-2 text-[11px] font-mono">
+        {result.checks.map((check: VerdictCheck, idx: number) => (
+          <motion.div
+            key={check.id}
+            initial={reduce ? false : { opacity: 0, x: -6 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{
+              duration: 0.16,
+              // Submit: slightly longer stagger for drama; Run: quick
+              delay: kind === "submit" ? 0.18 + idx * 0.07 : 0.08 + idx * 0.04,
+            }}
+            className="flex items-start gap-2 text-[11px] font-mono"
+          >
             <span className={cn("mt-0.5 shrink-0", check.passed ? "text-pass" : "text-fail")}>
               {check.passed ? "✓" : "✗"}
             </span>
@@ -159,14 +192,15 @@ function VerdictPanel({ result, kind }: { result: RunResult | null; kind: "run" 
             {!check.passed && check.message && (
               <span className="text-fail/80 truncate">{check.message}</span>
             )}
-          </div>
+          </motion.div>
         ))}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 function SubmissionsPanel({ sessionId }: { sessionId: string | null }) {
+  const reduce = useReducedMotion();
   const { data: submissions = [], isLoading } = useQuery({
     queryKey: ["submissions", sessionId],
     queryFn: async () => {
@@ -192,23 +226,126 @@ function SubmissionsPanel({ sessionId }: { sessionId: string | null }) {
     <div className="py-16 text-center text-text-secondary space-y-2">
       <p className="text-sm font-medium text-text">No submissions yet</p>
       <p className="text-xs max-w-xs mx-auto">
-        Click "Submit" to run the full grader and record your verdict.
+        Click &quot;Submit&quot; to run the full grader and record your verdict.
       </p>
     </div>
   );
 
   return (
     <div className="p-4 space-y-2">
-      {submissions.map((sub: { id: string; score: number; createdAt: string; verdictJson: unknown }) => (
-        <div key={sub.id} className="p-3 rounded-lg border border-border bg-surface-2">
-          <div className="flex items-center justify-between text-xs font-mono">
-            <span className="text-text-secondary">{new Date(sub.createdAt).toLocaleString()}</span>
-            <span className={cn("font-semibold", sub.score >= 70 ? "text-pass" : "text-fail")}>
-              {sub.score}/100 pts
-            </span>
-          </div>
-        </div>
-      ))}
+      <AnimatePresence initial={false}>
+        {submissions.map((sub: { id: string; score: number; createdAt: string }, idx: number) => (
+          <motion.div
+            key={sub.id}
+            initial={reduce ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.18, delay: idx * 0.05 }}
+            className="p-3 rounded-lg border border-border bg-surface-2"
+          >
+            <div className="flex items-center justify-between text-xs font-mono">
+              <span className="text-text-secondary">{new Date(sub.createdAt).toLocaleString()}</span>
+              <span className={cn("font-semibold", sub.score >= 70 ? "text-pass" : "text-fail")}>
+                {sub.score}/100 pts
+              </span>
+            </div>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Tab content with crossfade ─────────────────────────────────────────────
+
+function TabContent({
+  activeTab,
+  problem,
+  sessionId,
+}: {
+  activeTab: Tab;
+  problem: ProblemFull;
+  sessionId: string | null;
+}) {
+  const reduce = useReducedMotion();
+  return (
+    <div className="flex-1 overflow-y-auto relative">
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={activeTab}
+          initial={reduce ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          className="h-full"
+        >
+          {activeTab === "description" && (
+            <MarkdownContent md={problem.currentVersion.descriptionMd} emptyMessage="Description not yet written." />
+          )}
+          {activeTab === "hints" && (
+            <MarkdownContent md="" emptyMessage="No hints written yet for this problem." />
+          )}
+          {activeTab === "editorial" && (
+            <MarkdownContent md={problem.currentVersion.editorialMd} emptyMessage="Editorial not yet written. Come back after attempting the problem." />
+          )}
+          {activeTab === "solution" && (
+            <MarkdownContent md={problem.currentVersion.solutionMd} emptyMessage="Reference solution not yet written." />
+          )}
+          {activeTab === "submissions" && (
+            <SubmissionsPanel sessionId={sessionId} />
+          )}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Editor chrome: theme-aware dark/light wrapper ─────────────────────────
+
+/**
+ * The Monaco editor column is styled to look like a VS Code-style editor chrome.
+ * This IS an intentionally always-dark terminal-like aesthetic — HOWEVER, we make
+ * it theme-aware so in light mode it uses a lighter VS Code "Light" palette rather
+ * than fighting the page with a pitch-black panel.
+ *
+ * Dark mode:  bg-[#1e1e1e] tab bar bg-[#252526] border-[#3c3c3c] — classic VS Code Dark
+ * Light mode: bg-[#f3f3f3] tab bar bg-[#ececec] border-[#e0e0e0] — VS Code Light palette
+ *
+ * Status bar stays #007acc (VS Code brand color) in both modes — that's intentional.
+ */
+function EditorChrome({
+  isDark,
+  filename,
+  language,
+  saveStatus,
+}: {
+  isDark: boolean;
+  filename: string;
+  language: string;
+  saveStatus: "idle" | "saving" | "saved" | "error";
+}) {
+  const tabBg    = isDark ? "#252526" : "#ececec";
+  const editorBg = isDark ? "#1e1e1e" : "#f3f3f3";
+  const borderC  = isDark ? "#3c3c3c" : "#e0e0e0";
+  const textC    = isDark ? "#d4d4d4" : "#333333";
+  const subTextC = isDark ? "#888888" : "#999999";
+
+  return (
+    <div
+      className="flex items-center shrink-0 border-b"
+      style={{ background: tabBg, borderColor: borderC }}
+    >
+      <div
+        className="flex items-center gap-2 px-4 py-2 border-r border-t-2 border-t-accent"
+        style={{ background: editorBg, borderRightColor: borderC }}
+      >
+        <span className="text-xs font-mono" style={{ color: textC }}>{filename}</span>
+        {saveStatus === "saving" && (
+          <span className="h-1.5 w-1.5 rounded-full bg-warning" title="Unsaved changes" />
+        )}
+      </div>
+      <span className="ml-auto px-3 text-[10px] font-mono" style={{ color: subTextC }}>
+        {language}
+      </span>
     </div>
   );
 }
@@ -218,6 +355,8 @@ function SubmissionsPanel({ sessionId }: { sessionId: string | null }) {
 export default function WorkspacePage({ params }: { params: { slug: string } }) {
   const { slug } = params;
   const queryClient = useQueryClient();
+  const reduce = useReducedMotion();
+  const { isDark } = useTheme();
 
   // Auto-login test user
   const [authed, setAuthed] = useState(false);
@@ -250,7 +389,7 @@ export default function WorkspacePage({ params }: { params: { slug: string } }) 
     },
   });
 
-  // ── Query: Starter code from problem pack disk ────────────────────────
+  // ── Query: Starter code ───────────────────────────────────────────────
   const { data: starterCode } = useQuery({
     queryKey: ["starter-code", slug],
     queryFn: () => fetchStarterCode(slug),
@@ -323,7 +462,7 @@ export default function WorkspacePage({ params }: { params: { slug: string } }) 
     },
     onSuccess: (data) => {
       setRunResult(data);
-      setSubmitResult(null); // clear old submit result when re-running
+      setSubmitResult(null);
     },
   });
 
@@ -355,11 +494,15 @@ export default function WorkspacePage({ params }: { params: { slug: string } }) 
     </div>
   );
 
-  const isRunning  = runMutation.isPending;
+  const isRunning   = runMutation.isPending;
   const isSubmitting = submitMutation.isPending;
   const verdictToShow = submitResult
     ? { ...submitResult.verdict, rawOutput: submitResult.rawOutput, durationMs: submitResult.durationMs }
     : runResult;
+
+  // Editor chrome colors — theme-aware (see EditorChrome for rationale)
+  const editorBg = isDark ? "#1e1e1e" : "#f3f3f3";
+  const statusBarBg = "#007acc"; // VS Code brand blue — intentional in both modes
 
   return (
     <div className="flex flex-col h-[calc(100vh-56px)] overflow-hidden">
@@ -378,7 +521,6 @@ export default function WorkspacePage({ params }: { params: { slug: string } }) 
         <div className="flex items-center gap-3">
           <SaveStatus status={saveStatus} />
 
-          {/* Session status */}
           {activeSession ? (
             <span className="inline-flex items-center gap-1.5 text-xs font-mono text-pass">
               <span className="h-1.5 w-1.5 rounded-full bg-pass animate-pulse" />
@@ -394,7 +536,7 @@ export default function WorkspacePage({ params }: { params: { slug: string } }) 
             </button>
           )}
 
-          {/* ▶ Run — real Docker execution */}
+          {/* ▶ Run */}
           <button
             onClick={() => runMutation.mutate()}
             disabled={!activeSession || isRunning || isSubmitting}
@@ -408,7 +550,7 @@ export default function WorkspacePage({ params }: { params: { slug: string } }) 
             {isRunning ? "▶ Running..." : "▶ Run"}
           </button>
 
-          {/* Submit — runs full test suite with hidden tests */}
+          {/* Submit */}
           <button
             onClick={() => submitMutation.mutate()}
             disabled={!activeSession || isRunning || isSubmitting}
@@ -419,63 +561,70 @@ export default function WorkspacePage({ params }: { params: { slug: string } }) 
               "disabled:opacity-40 disabled:cursor-not-allowed",
             )}
           >
-            {isSubmitting ? "Submitting..." : "Submit"}
+            {isSubmitting ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="inline-block h-3 w-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                Submitting...
+              </span>
+            ) : "Submit"}
           </button>
         </div>
       </div>
 
-      {/* Run/Submit error banners */}
-      {runMutation.isError && (
-        <div className="px-4 py-2 text-xs font-mono text-fail bg-fail-soft border-b border-fail/30 shrink-0">
-          Run error: {(runMutation.error as Error).message}
-        </div>
-      )}
-      {submitMutation.isError && (
-        <div className="px-4 py-2 text-xs font-mono text-fail bg-fail-soft border-b border-fail/30 shrink-0">
-          Submit error: {(submitMutation.error as Error).message}
-        </div>
-      )}
+      {/* Error banners */}
+      <AnimatePresence>
+        {runMutation.isError && (
+          <motion.div
+            key="run-error"
+            initial={reduce ? false : { opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.15 }}
+            className="px-4 py-2 text-xs font-mono text-fail bg-fail-soft border-b border-fail/30 shrink-0 overflow-hidden"
+          >
+            Run error: {(runMutation.error as Error).message}
+          </motion.div>
+        )}
+        {submitMutation.isError && (
+          <motion.div
+            key="submit-error"
+            initial={reduce ? false : { opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.15 }}
+            className="px-4 py-2 text-xs font-mono text-fail bg-fail-soft border-b border-fail/30 shrink-0 overflow-hidden"
+          >
+            Submit error: {(submitMutation.error as Error).message}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Two-panel layout ── */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left: Description tabs */}
         <div className="w-[44%] flex flex-col border-r border-border min-h-0">
           <TabBar active={activeTab} onSelect={setActiveTab} />
-          <div className="flex-1 overflow-y-auto">
-            {activeTab === "description" && (
-              <MarkdownContent md={problem.currentVersion.descriptionMd} emptyMessage="Description not yet written." />
-            )}
-            {activeTab === "hints" && (
-              <MarkdownContent md="" emptyMessage="No hints written yet for this problem." />
-            )}
-            {activeTab === "editorial" && (
-              <MarkdownContent md={problem.currentVersion.editorialMd} emptyMessage="Editorial not yet written. Come back after attempting the problem." />
-            )}
-            {activeTab === "solution" && (
-              <MarkdownContent md={problem.currentVersion.solutionMd} emptyMessage="Reference solution not yet written." />
-            )}
-            {activeTab === "submissions" && (
-              <SubmissionsPanel sessionId={activeSession?.id ?? null} />
-            )}
-          </div>
+          <TabContent
+            activeTab={activeTab}
+            problem={problem}
+            sessionId={activeSession?.id ?? null}
+          />
         </div>
 
         {/* Right: Editor + verdict */}
-        <div className="flex-1 flex flex-col min-h-0 bg-[#1e1e1e]">
-          {/* File tab bar */}
-          <div className="flex items-center bg-[#252526] border-b border-[#3c3c3c] shrink-0">
-            <div className="flex items-center gap-2 px-4 py-2 bg-[#1e1e1e] border-r border-[#3c3c3c] border-t-2 border-t-accent">
-              <span className="text-xs font-mono text-neutral-300">{starterCode?.filename ?? "src/charge.js"}</span>
-              {saveStatus === "saving" && (
-                <span className="h-1.5 w-1.5 rounded-full bg-warning" title="Unsaved changes" />
-              )}
-            </div>
-            <span className="ml-auto px-3 text-[10px] font-mono text-neutral-500">
-              {starterCode?.language ?? "javascript"}
-            </span>
-          </div>
+        <div
+          className="flex-1 flex flex-col min-h-0"
+          style={{ background: editorBg }}
+        >
+          {/* File tab bar — theme-aware VS Code chrome */}
+          <EditorChrome
+            isDark={isDark}
+            filename={starterCode?.filename ?? "src/charge.js"}
+            language={starterCode?.language ?? "javascript"}
+            saveStatus={saveStatus}
+          />
 
-          {/* Monaco editor — flex-1 but leaves room for verdict panel */}
+          {/* Monaco editor */}
           <div className="flex-1 min-h-0">
             {codeInitialized ? (
               <CodeEditor
@@ -487,23 +636,32 @@ export default function WorkspacePage({ params }: { params: { slug: string } }) 
               />
             ) : (
               <div className="flex h-full items-center justify-center">
-                <span className="text-xs font-mono text-neutral-500 animate-pulse">
+                <span
+                  className="text-xs font-mono animate-pulse"
+                  style={{ color: isDark ? "#888888" : "#999999" }}
+                >
                   {activeSession ? "Restoring saved code from database..." : "Loading starter code from problem pack..."}
                 </span>
               </div>
             )}
           </div>
 
-          {/* Verdict panel — shown below editor after run/submit */}
-          {verdictToShow && (
-            <VerdictPanel
-              result={verdictToShow as RunResult}
-              kind={submitResult ? "submit" : "run"}
-            />
-          )}
+          {/* Verdict panel — AnimatePresence so it animates in AND out */}
+          <AnimatePresence mode="wait">
+            {verdictToShow && (
+              <VerdictPanel
+                key={`${submitResult ? "submit" : "run"}-${verdictToShow.score}`}
+                result={verdictToShow as RunResult}
+                kind={submitResult ? "submit" : "run"}
+              />
+            )}
+          </AnimatePresence>
 
-          {/* Status bar */}
-          <div className="flex items-center justify-between px-4 py-1 bg-[#007acc] shrink-0">
+          {/* Status bar — VS Code blue, intentional in both light and dark modes */}
+          <div
+            className="flex items-center justify-between px-4 py-1 shrink-0"
+            style={{ background: statusBarBg }}
+          >
             <span className="text-[10px] font-mono text-white/80">{starterCode?.filename ?? "src/charge.js"}</span>
             <div className="flex items-center gap-4 text-[10px] font-mono text-white/70">
               <span>JavaScript</span>

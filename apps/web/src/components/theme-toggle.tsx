@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useTheme } from "@/lib/use-theme";
 
-/** Sun icon (light mode) */
+/** Sun icon (shown in dark mode → clicking switches to light) */
 function SunIcon() {
   return (
     <svg
@@ -30,7 +30,7 @@ function SunIcon() {
   );
 }
 
-/** Moon icon (dark mode) */
+/** Moon icon (shown in light mode → clicking switches to dark) */
 function MoonIcon() {
   return (
     <svg
@@ -51,40 +51,28 @@ function MoonIcon() {
 }
 
 /**
- * Sun/moon toggle button. Reads/writes localStorage("heisenbug-theme") and
- * adds/removes the `.dark` class on <html>.
+ * Sun/moon toggle button.
  *
- * The *initial* class application happens via the inline script in layout.tsx
- * so there is no flash; this component only handles subsequent user toggles.
+ * Reads live theme state from useTheme() (MutationObserver on html.classList)
+ * so the displayed icon is always in sync. Writes to the DOM and localStorage
+ * on click. The no-flash inline script in layout.tsx handles the initial paint.
  */
 export function ThemeToggle() {
-  // Start as `undefined` so we don't render until we've read the real DOM state
-  const [isDark, setIsDark] = useState<boolean | undefined>(undefined);
-
-  // Sync from DOM on mount (the inline script already applied the class)
-  useEffect(() => {
-    setIsDark(document.documentElement.classList.contains("dark"));
-  }, []);
+  const { isDark } = useTheme();
 
   function toggle() {
     const next = !isDark;
-    setIsDark(next);
-
     if (next) {
       document.documentElement.classList.add("dark");
     } else {
       document.documentElement.classList.remove("dark");
     }
-
     try {
       localStorage.setItem("heisenbug-theme", next ? "dark" : "light");
     } catch {
       // localStorage may be unavailable (private browsing, storage quota) — silently ignore
     }
   }
-
-  // Don't render until we know the real state (avoids a flicker between icons)
-  if (isDark === undefined) return null;
 
   return (
     <button

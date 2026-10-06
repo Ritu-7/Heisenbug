@@ -3,6 +3,7 @@
 import { useRef, useCallback } from "react";
 import MonacoEditor, { OnMount } from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
+import { useTheme } from "@/lib/use-theme";
 
 interface CodeEditorProps {
   value: string;
@@ -23,14 +24,22 @@ export function CodeEditor({
 }: CodeEditorProps) {
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
+  // Live-tracking theme via MutationObserver — updates Monaco immediately when
+  // the user toggles the site theme, even with the editor open.
+  const { isDark } = useTheme();
+  const monacoTheme = isDark ? "vs-dark" : "light";
+
   const handleMount: OnMount = useCallback(
     (editor) => {
       editorRef.current = editor;
-      // Focus editor on mount
       editor.focus();
     },
     [],
   );
+
+  // Loading state background matches current theme so there's no flash
+  const loadingBg = isDark ? "#1e1e1e" : "#fffffe";
+  const loadingText = isDark ? "text-neutral-500" : "text-neutral-400";
 
   return (
     <div className="h-full w-full overflow-hidden" data-filename={filename}>
@@ -38,6 +47,7 @@ export function CodeEditor({
         height={height}
         language={language}
         value={value}
+        theme={monacoTheme}
         onChange={(val) => onChange(val ?? "")}
         onMount={handleMount}
         options={{
@@ -50,21 +60,22 @@ export function CodeEditor({
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
           wordWrap: "off",
-          theme: "vs-dark",
           padding: { top: 16, bottom: 16 },
           renderLineHighlight: "line",
           cursorBlinking: "smooth",
           contextmenu: false,
           automaticLayout: true,
-          // Disable Run/Submit keyboard shortcuts (those need Docker)
           scrollbar: {
             verticalScrollbarSize: 8,
             horizontalScrollbarSize: 8,
           },
         }}
         loading={
-          <div className="flex h-full items-center justify-center bg-[#1e1e1e]">
-            <span className="text-xs font-mono text-neutral-500">Loading editor...</span>
+          <div
+            className="flex h-full items-center justify-center"
+            style={{ background: loadingBg }}
+          >
+            <span className={`text-xs font-mono ${loadingText}`}>Loading editor...</span>
           </div>
         }
       />
