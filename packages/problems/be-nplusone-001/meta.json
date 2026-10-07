@@ -1,0 +1,16 @@
+{
+  "slug": "be-nplusone-001",
+  "title": "Optimize N+1 Query in Order History API",
+  "version": 1,
+  "entryFile": "src/orders.js",
+  "language": "javascript",
+  "testFramework": "jest",
+  "testCommand": "npx jest --json --no-coverage --forceExit",
+  "files": [
+    {
+      "path": "src/orders.js",
+      "editable": true,
+      "label": "implementation"
+    }
+  ]
+}

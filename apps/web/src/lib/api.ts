@@ -405,3 +405,56 @@ export async function startInvitation(token: string): Promise<{
   const data = await res.json() as { ok: boolean; data: { token: string; session: Session; assessment: InvitationPublic["assessment"] } };
   return data.data;
 }
+
+// ── Admin Problem Authoring ───────────────────────────────────────────────
+
+export interface DraftProblemPayload {
+  brief: string;
+  track?: string;
+  difficulty?: string;
+  slug?: string;
+}
+
+export interface ValidationChecks {
+  check1: boolean;
+  check2: boolean;
+  check3: boolean;
+  check4: boolean;
+}
+
+export interface ValidationResponse {
+  ok: boolean;
+  slug: string;
+  checks: ValidationChecks;
+  allPassed: boolean;
+  exitCode: number;
+  output: string;
+}
+
+/** POST /api/admin/problems/draft (AUTHOR, ADMIN) */
+export async function draftProblem(payload: DraftProblemPayload): Promise<{ ok: boolean; data: any }> {
+  return apiFetch<{ ok: boolean; data: any }>("/api/admin/problems/draft", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** POST /api/admin/problems/:slug/validate (AUTHOR, ADMIN) */
+export async function validateProblemDraft(slug: string): Promise<ValidationResponse> {
+  return apiFetch<ValidationResponse>(`/api/admin/problems/${slug}/validate`, {
+    method: "POST",
+  });
+}
+
+/** POST /api/admin/problems/:slug/publish (ADMIN) */
+export async function publishProblemDraft(slug: string): Promise<{ ok: boolean; slug: string; status: string; message: string }> {
+  return apiFetch<{ ok: boolean; slug: string; status: string; message: string }>(`/api/admin/problems/${slug}/publish`, {
+    method: "POST",
+  });
+}
+
+/** GET /api/admin/problems (AUTHOR, ADMIN) */
+export async function fetchAdminProblems(): Promise<Problem[]> {
+  const res = await apiFetch<{ ok: boolean; data: Problem[] }>("/api/admin/problems");
+  return res.data;
+}

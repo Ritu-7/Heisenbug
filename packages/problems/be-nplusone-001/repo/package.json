@@ -1,0 +1,12 @@
+{
+  "name": "be-nplusone-001",
+  "version": "1.0.0",
+  "main": "src/orders.js",
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0"
+  }
+}
