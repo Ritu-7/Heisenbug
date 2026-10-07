@@ -2,21 +2,9 @@ import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { createId } from "@paralleldrive/cuid2";
 import { prisma } from "../lib/prisma";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, requireRole } from "../middleware/auth";
 
 const router = Router();
-
-// ── Role guard helper ──────────────────────────────────────────────────────
-
-function requireRole(...roles: string[]) {
-  return (req: Request, res: Response, next: () => void): void => {
-    if (!req.user || !roles.includes(req.user.role)) {
-      res.status(403).json({ ok: false, error: "Forbidden: insufficient role" });
-      return;
-    }
-    next();
-  };
-}
 
 // ── Schemas ────────────────────────────────────────────────────────────────
 

@@ -29,3 +29,18 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     res.status(401).json({ ok: false, error: "Invalid or expired token" });
   }
 }
+
+/**
+ * Enforces that req.user has one of the allowed roles.
+ * Must be preceded by requireAuth in the middleware chain.
+ * Returns 403 on missing or insufficient role.
+ */
+export function requireRole(...roles: string[]) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      res.status(403).json({ ok: false, error: "Forbidden: insufficient role" });
+      return;
+    }
+    next();
+  };
+}

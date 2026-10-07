@@ -140,6 +140,11 @@ router.get("/:id", requireAuth, async (req: Request<{ id: string }>, res: Respon
         },
       },
       variant: true,
+      invitation: {
+        include: {
+          assessment: { select: { recruiterId: true } },
+        },
+      },
     },
   });
 
@@ -148,8 +153,17 @@ router.get("/:id", requireAuth, async (req: Request<{ id: string }>, res: Respon
     return;
   }
 
-  // Enforce ownership — admins may view any session
-  if (session.userId !== userId && req.user!.role !== "ADMIN") {
+  // Enforce object-level access:
+  // - Candidate owning the session
+  // - Recruiter who created the assessment associated with this session's invitation
+  // - System administrator
+  const isOwner = session.userId === userId;
+  const isAdmin = req.user!.role === "ADMIN";
+  const isAssignedRecruiter =
+    req.user!.role === "RECRUITER" &&
+    session.invitation?.assessment.recruiterId === userId;
+
+  if (!isOwner && !isAdmin && !isAssignedRecruiter) {
     res.status(403).json({ ok: false, error: "Forbidden" });
     return;
   }
@@ -166,16 +180,28 @@ router.get("/:id/submissions", requireAuth, async (req: Request<{ id: string }>,
   const { id } = req.params;
   const userId = req.user!.sub;
 
-  // Verify session exists and caller owns it
+  // Verify session exists and caller is authorized (owner, assigned recruiter, or admin)
   const session = await prisma.session.findUnique({
     where: { id },
-    select: { userId: true },
+    select: {
+      userId: true,
+      invitation: {
+        select: { assessment: { select: { recruiterId: true } } },
+      },
+    },
   });
   if (!session) {
     res.status(404).json({ ok: false, error: `Session '${id}' not found` });
     return;
   }
-  if (session.userId !== userId && req.user!.role !== "ADMIN") {
+
+  const isOwner = session.userId === userId;
+  const isAdmin = req.user!.role === "ADMIN";
+  const isAssignedRecruiter =
+    req.user!.role === "RECRUITER" &&
+    session.invitation?.assessment.recruiterId === userId;
+
+  if (!isOwner && !isAdmin && !isAssignedRecruiter) {
     res.status(403).json({ ok: false, error: "Forbidden" });
     return;
   }
@@ -199,13 +225,25 @@ router.get("/:id/events", requireAuth, async (req: Request<{ id: string }>, res:
 
   const session = await prisma.session.findUnique({
     where: { id },
-    select: { userId: true },
+    select: {
+      userId: true,
+      invitation: {
+        select: { assessment: { select: { recruiterId: true } } },
+      },
+    },
   });
   if (!session) {
     res.status(404).json({ ok: false, error: `Session '${id}' not found` });
     return;
   }
-  if (session.userId !== userId && req.user!.role !== "ADMIN") {
+
+  const isOwner = session.userId === userId;
+  const isAdmin = req.user!.role === "ADMIN";
+  const isAssignedRecruiter =
+    req.user!.role === "RECRUITER" &&
+    session.invitation?.assessment.recruiterId === userId;
+
+  if (!isOwner && !isAdmin && !isAssignedRecruiter) {
     res.status(403).json({ ok: false, error: "Forbidden" });
     return;
   }

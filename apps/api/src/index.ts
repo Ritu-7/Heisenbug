@@ -8,6 +8,7 @@ import sessionsRouter from "./routes/sessions";
 import runRouter from "./routes/run";
 import assessmentsRouter from "./routes/assessments";
 import invitationsRouter from "./routes/invitations";
+import adminRouter from "./routes/admin";
 import { prisma } from "./lib/prisma";
 
 const app = express();
@@ -28,6 +29,7 @@ app.use("/api/sessions", sessionsRouter);
 app.use("/api/sessions", runRouter); // run + submit endpoints
 app.use("/api/assessments", assessmentsRouter);
 app.use("/api/invitations", invitationsRouter);
+app.use("/api/admin", adminRouter);
 
 // ── 404 handler ────────────────────────────────────────────────────────────
 app.use((_req, res) => {

@@ -239,6 +239,23 @@ async function main() {
   });
   console.log(`  ✓ Recruiter user: ${recruiter.id} (${recruiter.email})`);
 
+  // ── Seed author user ───────────────────────────────────────────────────────
+  const AUTHOR_EMAIL = "author@heisenbug.dev";
+  const AUTHOR_PASSWORD = "authorpassword123";
+  const authorHash = await bcrypt.hash(AUTHOR_PASSWORD, 10);
+
+  const author = await prisma.user.upsert({
+    where: { email: AUTHOR_EMAIL },
+    update: { passwordHash: authorHash },
+    create: {
+      email: AUTHOR_EMAIL,
+      name: "Arthur Author",
+      role: "AUTHOR",
+      passwordHash: authorHash,
+    },
+  });
+  console.log(`  ✓ Author user:    ${author.id} (${author.email})`);
+
   // ── Seed problem 1: be-idempotency-001 ───────────────────────────────────
   const problem1 = await prisma.problem.upsert({
     where: { slug: "be-idempotency-001" },
