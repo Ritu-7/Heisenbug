@@ -1,8 +1,26 @@
 import { Router, Request, Response } from "express";
+import rateLimit from "express-rate-limit";
 import { prisma } from "../lib/prisma";
 import { signToken } from "../lib/jwt";
 
 const router = Router();
+
+// Rate limiter for starting assessment sessions:
+// Protects against resource exhaustion via automated spamming of database rows (User & Session creation).
+const startInvitationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per 15 minutes per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  statusCode: 429,
+  message: {
+    ok: false,
+    error: "Too many assessment start attempts. Please try again after 15 minutes.",
+  },
+  handler: (_req, res, _next, options) => {
+    res.status(options.statusCode).json(options.message);
+  },
+});
 
 // ── GET /api/invitations/:token ───────────────────────────────────────────
 // PUBLIC. Returns assessment summary. Real 410 if expired, 409 if already used.
@@ -57,9 +75,11 @@ router.get(
 // PUBLIC. Validates token. Creates (or reuses) CANDIDATE User, creates Session
 // in ASSESSMENT mode with deadline, links invitation.sessionId.
 // Returns a session-scoped JWT so subsequent Run/Submit calls are authenticated.
+// Rate-limited: 10 attempts per 15 minutes per IP (returns 429 once exceeded).
 
 router.post(
   "/:token/start",
+  startInvitationLimiter,
   async (req: Request<{ token: string }>, res: Response): Promise<void> => {
     const invitation = await prisma.invitation.findUnique({
       where: { token: req.params.token },

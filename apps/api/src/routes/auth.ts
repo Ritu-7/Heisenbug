@@ -1,10 +1,27 @@
 import { Router, Request, Response } from "express";
+import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { signToken } from "../lib/jwt";
 
 const router = Router();
+
+// Strict rate limit on login attempts: max 5 attempts per 15 minutes per IP
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 attempts per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  statusCode: 429,
+  message: {
+    ok: false,
+    error: "Too many login attempts. Please try again after 15 minutes.",
+  },
+  handler: (_req, res, _next, options) => {
+    res.status(options.statusCode).json(options.message);
+  },
+});
 
 const LoginSchema = z.object({
   email: z.string().email(),
@@ -16,16 +33,9 @@ const LoginSchema = z.object({
  * Body: { email, password }
  * Returns: { ok: true, token, user: { id, email, name, role } }
  *
- * NOTE: The User model in Prisma does NOT have a passwordHash column —
- * this is by design (auth will use a dedicated auth table or provider later).
- * For this chunk we store hashed passwords in a small parallel table
- * called `user_credentials` created via a raw migration addendum.
- *
- * ACTUALLY: to keep the schema clean for this chunk we extend the User model
- * with a `passwordHash` column via a new Prisma migration.
- * See: packages/db/prisma/migrations/…/add_password_hash.sql
+ * Rate-limited: 5 attempts per 15 minutes per IP (returns 429 once exceeded).
  */
-router.post("/login", async (req: Request, res: Response): Promise<void> => {
+router.post("/login", loginLimiter, async (req: Request, res: Response): Promise<void> => {
   const parsed = LoginSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ ok: false, error: "Invalid request body", fieldErrors: parsed.error.flatten().fieldErrors });
