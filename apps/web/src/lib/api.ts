@@ -92,6 +92,20 @@ export interface Session {
     paramsJson: unknown;
   };
   submissions?: Submission[];
+  user?: {
+    id: string;
+    email: string;
+    name: string;
+  };
+  invitation?: {
+    candidateEmail?: string;
+    assessment?: {
+      id: string;
+      title: string;
+      recruiterId: string;
+      timeLimitMinutes?: number;
+    };
+  };
 }
 
 export interface ProblemsResponse {
@@ -245,6 +259,26 @@ export async function postSessionEvent(
       type,
       payloadJson,
     }),
+  });
+  return data.data;
+}
+
+/** Fetch all submissions for a session */
+export async function fetchSessionSubmissions(sessionId: string): Promise<Submission[]> {
+  const data = await apiFetch<{ ok: boolean; data: Submission[] }>(`/api/sessions/${sessionId}/submissions`);
+  return data.data;
+}
+
+/** Unlock/reveal a hint for a session */
+export async function postSessionHint(
+  sessionId: string,
+  hintIndex: number,
+  penalty = 5,
+  description?: string,
+): Promise<{ hintUse: any; event: SessionEvent }> {
+  const data = await apiFetch<{ ok: boolean; data: { hintUse: any; event: SessionEvent } }>(`/api/sessions/${sessionId}/hints`, {
+    method: "POST",
+    body: JSON.stringify({ hintIndex, penalty, description }),
   });
   return data.data;
 }

@@ -541,7 +541,7 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
       `b/${meta.entryFile} (submission)`,
     );
 
-    // Save Submission row to Postgres and mark session as SUBMITTED
+    // Save Submission row to Postgres, record SUBMIT event, and mark session as SUBMITTED
     const [submission] = await prisma.$transaction([
       prisma.submission.create({
         data: {
@@ -554,6 +554,19 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
       prisma.session.update({
         where: { id },
         data: { status: "SUBMITTED" },
+      }),
+      prisma.sessionEvent.create({
+        data: {
+          sessionId: id,
+          occurredAt: new Date(),
+          type: "SUBMIT",
+          payloadJson: {
+            score: result.score,
+            passed: result.passed,
+            checks: result.checks,
+            durationMs,
+          } as unknown as Prisma.InputJsonObject,
+        },
       }),
     ]);
 

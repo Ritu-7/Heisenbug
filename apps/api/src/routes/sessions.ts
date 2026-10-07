@@ -125,6 +125,9 @@ router.get("/:id", requireAuth, async (req: Request<{ id: string }>, res: Respon
   const session = await prisma.session.findUnique({
     where: { id },
     include: {
+      user: {
+        select: { id: true, email: true, name: true },
+      },
       version: {
         select: {
           id: true,
@@ -140,9 +143,12 @@ router.get("/:id", requireAuth, async (req: Request<{ id: string }>, res: Respon
         },
       },
       variant: true,
+      submissions: {
+        orderBy: { createdAt: "desc" },
+      },
       invitation: {
         include: {
-          assessment: { select: { recruiterId: true } },
+          assessment: { select: { id: true, title: true, recruiterId: true, timeLimitMinutes: true } },
         },
       },
     },
@@ -297,6 +303,55 @@ router.post("/:id/events", requireAuth, async (req: Request<{ id: string }>, res
   });
 
   res.status(201).json({ ok: true, data: event });
+});
+
+/**
+ * POST /api/sessions/:id/hints
+ * Body: { hintIndex?: number, penalty?: number, description?: string }
+ * Records a HintUse and creates a HINT_REVEAL SessionEvent.
+ */
+router.post("/:id/hints", requireAuth, async (req: Request<{ id: string }>, res: Response): Promise<void> => {
+  const { id } = req.params;
+  const userId = req.user!.sub;
+  const { hintIndex = 1, penalty = 5, description } = req.body ?? {};
+
+  const session = await prisma.session.findUnique({
+    where: { id },
+    select: { userId: true },
+  });
+  if (!session) {
+    res.status(404).json({ ok: false, error: `Session '${id}' not found` });
+    return;
+  }
+  if (session.userId !== userId && req.user!.role !== "ADMIN") {
+    res.status(403).json({ ok: false, error: "Forbidden" });
+    return;
+  }
+
+  const desc = description ?? `Hint ${hintIndex} revealed (-${penalty} pts)`;
+
+  const [hintUse, event] = await prisma.$transaction([
+    prisma.hintUse.create({
+      data: {
+        sessionId: id,
+        hintIndex: Number(hintIndex),
+      },
+    }),
+    prisma.sessionEvent.create({
+      data: {
+        sessionId: id,
+        occurredAt: new Date(),
+        type: "HINT_REVEAL",
+        payloadJson: {
+          hintIndex: Number(hintIndex),
+          penalty: Number(penalty),
+          description: desc,
+        },
+      },
+    }),
+  ]);
+
+  res.status(201).json({ ok: true, data: { hintUse, event } });
 });
 
 export default router;

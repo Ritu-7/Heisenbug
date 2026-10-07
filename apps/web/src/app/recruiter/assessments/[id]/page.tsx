@@ -103,7 +103,17 @@ function InvitationRow({
           Expires {new Date(invitation.expiresAt).toLocaleDateString()}
         </p>
       </div>
-      <StatusBadge status={invitation.status} hasChanged={hasChanged} />
+      <div className="flex items-center gap-3">
+        <StatusBadge status={invitation.status} hasChanged={hasChanged} />
+        {invitation.sessionId && (
+          <Link
+            href={`/recruiter/reports/${invitation.sessionId}`}
+            className="inline-flex items-center gap-1 text-xs font-mono font-medium text-accent hover:underline px-2.5 py-1 rounded border border-accent/30 bg-accent/10 hover:bg-accent/20 transition-colors"
+          >
+            View Report →
+          </Link>
+        )}
+      </div>
     </motion.div>
   );
 }
