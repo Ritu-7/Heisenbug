@@ -139,8 +139,10 @@ jobs:
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium
 
-      - name: Build Web app
-        run: npm --workspace=@heisenbug/web run build
+      - name: Build API and Web
+        run: |
+          npm --workspace=@heisenbug/api run build
+          npm --workspace=@heisenbug/web run build
 
       - name: Start API and Web servers
         env:
@@ -149,7 +151,7 @@ jobs:
           JWT_SECRET: heisenbug-dev-jwt-secret-change-in-prod-please
           NEXT_PUBLIC_API_URL: http://localhost:3001
         run: |
-          npm --workspace=@heisenbug/api run dev &
+          node apps/api/dist/index.js &
           npm --workspace=@heisenbug/web run start &
           npx wait-on http://localhost:3001/health http://localhost:3000 -t 60000
 
