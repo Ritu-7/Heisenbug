@@ -1,12 +1,13 @@
-// solutions/reference.js — Reference solution for be-race-002
+// bad_patches/naive-check.js — Plausible-but-wrong "fix" for be-race-002
 //
-// The fix: wrap the read-check-decrement in db.$transaction() so the
-// in-memory stub executes the operation atomically (no event-loop yields
-// between read and write). On a real Postgres database this corresponds to
-// using SELECT FOR UPDATE inside a transaction.
+// This patch passes visible tests (sequential) but fails the hidden
+// concurrency tests because the check-then-decrement is still non-atomic —
+// it just re-queries inside the same non-transactional flow, which still
+// yields to the event loop between read and write.
 //
-// NOTE: This file is volume-mounted at /app/src/charge.js inside Docker.
-// All require() paths must be relative to /app/src/ (same as the starter).
+// The candidate might think: "I'll just re-read stock right before decrementing
+// to be sure." But this doesn't help — the race window is between the last
+// read and the update, which still exists here.
 
 'use strict';
 
@@ -19,35 +20,30 @@ async function handlePurchase(req, res) {
     return res.status(400).json({ error: 'productId is required' });
   }
 
-  try {
-    const updated = await db.$transaction(async (tx) => {
-      // Inside the transaction the stub reads synchronously (no yield),
-      // preventing concurrent requests from interleaving here.
-      const row = await tx.stock.findUnique({ where: { productId } });
+  // Plausible-but-wrong: double-check without a transaction
+  const row = await db.stock.findUnique({ where: { productId } });
 
-      if (!row) {
-        const err = new Error('Product not found');
-        err.status = 404;
-        throw err;
-      }
-
-      if (row.quantity <= 0) {
-        const err = new Error('Out of stock');
-        err.status = 409;
-        throw err;
-      }
-
-      return tx.stock.update({
-        where: { productId },
-        data:  { quantity: row.quantity - 1 },
-      });
-    });
-
-    return res.status(200).json({ productId, remaining: updated.quantity });
-  } catch (err) {
-    const status = err.status ?? 500;
-    return res.status(status).json({ error: err.message });
+  if (!row) {
+    return res.status(404).json({ error: 'Product not found' });
   }
+
+  if (row.quantity <= 0) {
+    return res.status(409).json({ error: 'Out of stock' });
+  }
+
+  // "I'll re-read right before update to be safe" — still races!
+  const fresh = await db.stock.findUnique({ where: { productId } });
+  if (!fresh || fresh.quantity <= 0) {
+    return res.status(409).json({ error: 'Out of stock' });
+  }
+
+  // RACE WINDOW STILL EXISTS: between fresh read and the update below
+  const updated = await db.stock.update({
+    where: { productId },
+    data:  { quantity: fresh.quantity - 1 },
+  });
+
+  return res.status(200).json({ productId, remaining: updated.quantity });
 }
 
 module.exports = { handlePurchase };
