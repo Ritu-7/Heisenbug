@@ -12,6 +12,7 @@ export default defineConfig({
   },
   reporter: [
     ['list'],
+    ['github'],
     ['html', { open: 'never' }],
   ],
   use: {

@@ -105,7 +105,7 @@ test.describe('Recruiter Flow', () => {
 
     // 13. Back in recruiter's view, confirm status updates to real SUBMITTED
     // The recruiter page refetches every 2 seconds
-    const candidateRow = page.locator('div', { has: page.locator(`text="${candidateEmail}"`) }).filter({ hasText: 'Expires' });
+    const candidateRow = page.locator('div', { has: page.locator(`text="${candidateEmail}"`) }).filter({ hasText: 'Expires' }).first();
     await expect(candidateRow.locator('text=Submitted')).toBeVisible({ timeout: 20_000 });
 
     // Clean up incognito context
