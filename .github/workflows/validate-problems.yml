@@ -151,9 +151,9 @@ jobs:
           JWT_SECRET: heisenbug-dev-jwt-secret-change-in-prod-please
           NEXT_PUBLIC_API_URL: http://localhost:3001
         run: |
-          node apps/api/dist/index.js &
-          npm --workspace=@heisenbug/web run start &
-          npx wait-on http://localhost:3001/health http://localhost:3000 -t 60000
+          node apps/api/dist/index.js > /tmp/api.log 2>&1 &
+          npm --workspace=@heisenbug/web run start > /tmp/web.log 2>&1 &
+          npx wait-on http://127.0.0.1:3001/health http://127.0.0.1:3000 -t 60000 || (echo "=== API LOG ===" && cat /tmp/api.log && echo "=== WEB LOG ===" && cat /tmp/web.log && exit 1)
 
       - name: Run Playwright E2E Tests
         env:
