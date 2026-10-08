@@ -1,0 +1,83 @@
+name: Validate Problems & Typecheck
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate-problems:
+    name: Validate Problem Packs
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: heisenbug
+          POSTGRES_PASSWORD: heisenbug_secret
+          POSTGRES_DB: heisenbug
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://heisenbug:heisenbug_secret@localhost:5432/heisenbug
+      PORT: 3001
+      JWT_SECRET: heisenbug-dev-jwt-secret-change-in-prod-please
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Database (Prisma Client, Migrate & Seed)
+        run: |
+          npm run db:generate
+          npm run db:migrate
+          npm run db:seed
+
+      - name: Build Problem Runner Docker Images
+        run: node infra/build-images.js
+
+      - name: Run Validation Pipeline on All Problem Packs
+        run: npx ts-node packages/problems/validate.ts --all
+
+  typecheck:
+    name: Typecheck API & Web
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npm run db:generate
+
+      - name: Typecheck apps/api
+        run: npx tsc --noEmit --project apps/api/tsconfig.json
+
+      - name: Typecheck apps/web
+        run: npx tsc --noEmit --project apps/web/tsconfig.json

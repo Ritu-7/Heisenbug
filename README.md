@@ -1,5 +1,7 @@
 # Heisenbug
 
+[![Validate Problems & Typecheck](https://github.com/Ritu-7/Heisenbug/actions/workflows/validate-problems.yml/badge.svg)](https://github.com/Ritu-7/Heisenbug/actions/workflows/validate-problems.yml)
+
 Heisenbug is a real-world backend debugging and system design evaluation platform.
 
 ## Prerequisites

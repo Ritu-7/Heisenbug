@@ -451,15 +451,9 @@ async function check4_BadPatchRejected(
   return true;
 }
 
-// ── Main ─────────────────────────────────────────────────────────────────────
+// ── Validation Runner ────────────────────────────────────────────────────────
 
-async function main() {
-  const slug = process.argv[2];
-  if (!slug) {
-    console.error('Usage: npx ts-node validate.ts <slug>');
-    process.exit(1);
-  }
-
+async function validateProblem(slug: string): Promise<boolean> {
   const meta           = loadProblemMeta(slug);
   const packDir        = path.join(__dirname, slug);
   const starterPath    = path.join(packDir, 'repo', meta.entryFile);
@@ -489,12 +483,12 @@ async function main() {
   ] as [string, string][]) {
     if (!fs.existsSync(p)) {
       console.error(`${R}Missing:${RS} ${label} — ${p}`);
-      process.exit(1);
+      return false;
     }
   }
   if (!badPatchPath) {
     console.error(`${R}Missing:${RS} Bad patch — no .js or .py files found in ${badPatchesDir}`);
-    process.exit(1);
+    return false;
   }
 
   const starterCode    = fs.readFileSync(starterPath, 'utf-8');
@@ -531,7 +525,7 @@ async function main() {
   const total  = Object.keys(results).length;
 
   console.log(`\n  ${BD}${'═'.repeat(62)}${RS}`);
-  console.log(`  ${BD}VALIDATION SUMMARY: ${passed}/${total} checks passed${RS}`);
+  console.log(`  ${BD}VALIDATION SUMMARY FOR ${slug}: ${passed}/${total} checks passed${RS}`);
   console.log(`  ${BD}${'═'.repeat(62)}${RS}\n`);
 
   for (const [name, result] of Object.entries(results)) {
@@ -540,10 +534,57 @@ async function main() {
   }
 
   if (passed < total) {
-    console.log(`\n  ${R}${BD}✗  Validation FAILED — fix the checks above before publishing.${RS}\n`);
+    console.log(`\n  ${R}${BD}✗  Validation FAILED for ${slug} — fix the checks above before publishing.${RS}\n`);
+    return false;
+  } else {
+    console.log(`\n  ${G}${BD}✓  Validation PASSED for ${slug} — problem pack is ready for production.${RS}\n`);
+    return true;
+  }
+}
+
+// ── Main ─────────────────────────────────────────────────────────────────────
+
+async function main() {
+  const arg = process.argv[2];
+
+  if (arg && arg !== '--all') {
+    // Single problem validation
+    const success = await validateProblem(arg);
+    process.exit(success ? 0 : 1);
+  }
+
+  // Multi-problem discovery & validation
+  const problemsDir = __dirname;
+  const slugs = fs.readdirSync(problemsDir, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .filter(entry => fs.existsSync(path.join(problemsDir, entry.name, 'meta.json')))
+    .map(entry => entry.name);
+
+  if (slugs.length === 0) {
+    console.error('No problem packs found in', problemsDir);
+    process.exit(1);
+  }
+
+  console.log(`\n${BD}Discovered ${slugs.length} problem pack(s) to validate:${RS} ${slugs.join(', ')}\n`);
+
+  const failed: string[] = [];
+  for (const slug of slugs) {
+    const success = await validateProblem(slug);
+    if (!success) {
+      failed.push(slug);
+    }
+  }
+
+  console.log(`\n  ${BD}${'═'.repeat(62)}${RS}`);
+  console.log(`  ${BD}OVERALL PROBLEM PACKS VALIDATION SUMMARY${RS}`);
+  console.log(`  ${BD}${'═'.repeat(62)}${RS}`);
+  console.log(`  Total: ${slugs.length} | ${G}Passed: ${slugs.length - failed.length}${RS} | ${failed.length > 0 ? R : G}Failed: ${failed.length}${RS}\n`);
+
+  if (failed.length > 0) {
+    console.error(`  ${R}${BD}✗  FAILED PROBLEM PACKS: ${failed.join(', ')}${RS}\n`);
     process.exit(1);
   } else {
-    console.log(`\n  ${G}${BD}✓  Validation PASSED — problem pack is ready for production.${RS}\n`);
+    console.log(`  ${G}${BD}✓  ALL ${slugs.length} PROBLEM PACKS PASSED ALL VALIDATION CHECKS!${RS}\n`);
     process.exit(0);
   }
 }
