@@ -133,6 +133,9 @@ jobs:
       - name: Build Problem Runner Docker Images
         run: node infra/build-images.js
 
+      - name: Install Next.js Linux SWC binary
+        run: npm --workspace=@heisenbug/web i @next/swc-linux-x64-gnu@14.2.15 --no-save
+
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium
 
