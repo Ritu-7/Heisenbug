@@ -139,6 +139,9 @@ jobs:
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium
 
+      - name: Build Web app
+        run: npm --workspace=@heisenbug/web run build
+
       - name: Run Playwright E2E Tests
         run: npx playwright test
 
