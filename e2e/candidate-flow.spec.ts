@@ -113,11 +113,11 @@ test.describe('Candidate Practice Flow', () => {
 
     // Verify bad patch score from validate.ts / meta.json (85/100 pts) and explanation render
     await expect(page.getByRole('heading', { name: 'Common Near-Misses & Pitfalls' })).toBeVisible();
-    await expect(page.locator('text=In-Memory Map Cache')).toBeVisible();
-    await expect(page.locator('text=85/100 pts')).toBeVisible();
-    await expect(page.locator('text=Fails: H1')).toBeVisible();
-    await expect(page.locator('text=The Flaw')).toBeVisible();
-    await expect(page.locator('text=Which Hidden Check Catches It')).toBeVisible();
-    await expect(page.locator('text=Not enough data yet').or(page.locator('text=% of submissions'))).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'In-Memory Map Cache', exact: true })).toBeVisible();
+    await expect(page.locator('text=85/100 pts').first()).toBeVisible();
+    await expect(page.locator('text=Fails: H1').first()).toBeVisible();
+    await expect(page.locator('text=The Flaw').first()).toBeVisible();
+    await expect(page.locator('text=Which Hidden Check Catches It').first()).toBeVisible();
+    await expect(page.locator('text=Not enough data yet').or(page.locator('text=% of submissions')).first()).toBeVisible();
   });
 });
