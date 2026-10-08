@@ -45,10 +45,12 @@ jobs:
         run: npm ci
 
       - name: Setup Database (Prisma Client, Migrate & Seed)
+        env:
+          DATABASE_URL: postgresql://heisenbug:heisenbug_secret@localhost:5432/heisenbug
         run: |
-          npm run db:generate
-          npm run db:migrate
-          npm run db:seed
+          npm --workspace=@heisenbug/db run db:generate
+          npm --workspace=@heisenbug/db run db:migrate
+          npm --workspace=@heisenbug/db run db:seed
 
       - name: Build Problem Runner Docker Images
         run: node infra/build-images.js
