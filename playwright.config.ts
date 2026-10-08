@@ -28,9 +28,11 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'npm --workspace=@heisenbug/api run dev',
+      command: process.env.CI
+        ? 'node apps/api/dist/index.js'
+        : 'npm --workspace=@heisenbug/api run dev',
       url: 'http://localhost:3001/health',
-      reuseExistingServer: true,
+      reuseExistingServer: !process.env.CI,
       timeout: 120_000,
       env: {
         DATABASE_URL:
@@ -46,9 +48,10 @@ export default defineConfig({
         ? 'npm --workspace=@heisenbug/web run start'
         : 'npm --workspace=@heisenbug/web run dev',
       url: 'http://localhost:3000',
-      reuseExistingServer: true,
+      reuseExistingServer: !process.env.CI,
       timeout: 120_000,
       env: {
+        PORT: '3000',
         NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001',
       },
     },

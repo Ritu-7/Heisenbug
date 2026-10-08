@@ -105,7 +105,6 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://heisenbug:heisenbug_secret@localhost:5432/heisenbug
-      PORT: 3001
       JWT_SECRET: heisenbug-dev-jwt-secret-change-in-prod-please
       NEXT_PUBLIC_API_URL: http://localhost:3001
 
@@ -144,22 +143,10 @@ jobs:
           npm --workspace=@heisenbug/api run build
           npm --workspace=@heisenbug/web run build
 
-      - name: Start API and Web servers
-        env:
-          DATABASE_URL: postgresql://heisenbug:heisenbug_secret@localhost:5432/heisenbug
-          PORT: 3001
-          JWT_SECRET: heisenbug-dev-jwt-secret-change-in-prod-please
-          NEXT_PUBLIC_API_URL: http://localhost:3001
-        run: |
-          node apps/api/dist/index.js > /tmp/api.log 2>&1 &
-          npm --workspace=@heisenbug/web run start > /tmp/web.log 2>&1 &
-          npx wait-on http://127.0.0.1:3001/health http://127.0.0.1:3000 -t 60000 || (echo "=== API LOG ===" && cat /tmp/api.log && echo "=== WEB LOG ===" && cat /tmp/web.log && exit 1)
-
       - name: Run Playwright E2E Tests
         env:
           CI: true
           DATABASE_URL: postgresql://heisenbug:heisenbug_secret@localhost:5432/heisenbug
-          PORT: 3001
           JWT_SECRET: heisenbug-dev-jwt-secret-change-in-prod-please
           NEXT_PUBLIC_API_URL: http://localhost:3001
         run: npx playwright test --reporter=list
