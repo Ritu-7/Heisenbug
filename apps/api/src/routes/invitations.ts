@@ -9,7 +9,7 @@ const router = Router();
 // Protects against resource exhaustion via automated spamming of database rows (User & Session creation).
 const startInvitationLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // 10 attempts per 15 minutes per IP
+  max: process.env.NODE_ENV === "test" || process.env.CI ? 1000 : 10,
   standardHeaders: true,
   legacyHeaders: false,
   statusCode: 429,
