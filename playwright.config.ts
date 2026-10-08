@@ -30,7 +30,7 @@ export default defineConfig({
     {
       command: 'npm --workspace=@heisenbug/api run dev',
       url: 'http://localhost:3001/health',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: true,
       timeout: 120_000,
       env: {
         DATABASE_URL:
@@ -46,7 +46,7 @@ export default defineConfig({
         ? 'npm --workspace=@heisenbug/web run start'
         : 'npm --workspace=@heisenbug/web run dev',
       url: 'http://localhost:3000',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: true,
       timeout: 120_000,
       env: {
         NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001',

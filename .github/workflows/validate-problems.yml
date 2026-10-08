@@ -142,6 +142,17 @@ jobs:
       - name: Build Web app
         run: npm --workspace=@heisenbug/web run build
 
+      - name: Start API and Web servers
+        env:
+          DATABASE_URL: postgresql://heisenbug:heisenbug_secret@localhost:5432/heisenbug
+          PORT: 3001
+          JWT_SECRET: heisenbug-dev-jwt-secret-change-in-prod-please
+          NEXT_PUBLIC_API_URL: http://localhost:3001
+        run: |
+          npm --workspace=@heisenbug/api run dev &
+          npm --workspace=@heisenbug/web run start &
+          npx wait-on http://localhost:3001/health http://localhost:3000 -t 60000
+
       - name: Run Playwright E2E Tests
         env:
           CI: true
