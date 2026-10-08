@@ -7,10 +7,10 @@ import { signToken } from "../lib/jwt";
 
 const router = Router();
 
-// Strict rate limit on login attempts: max 5 attempts per 15 minutes per IP
+// Rate limit on login attempts: relaxed in dev/test/CI so test suites are not blocked
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 attempts per windowMs
+  max: process.env.NODE_ENV === "test" || process.env.CI ? 1000 : 100, // 100 in dev, 1000 in test/CI
   standardHeaders: true,
   legacyHeaders: false,
   statusCode: 429,

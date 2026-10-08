@@ -215,7 +215,7 @@ export default function AssessmentDetailPage({
   const { data: assessment, isLoading, isError, error } = useQuery({
     queryKey: ["assessment", params.id],
     queryFn: () => fetchAssessment(params.id),
-    refetchInterval: 15_000, // re-fetch every 15 s so status updates appear without manual refresh
+    refetchInterval: 2_000, // re-fetch every 2 s so status updates appear promptly in UI and tests
   });
 
   // Track status changes across refetches

@@ -33,8 +33,15 @@ export function CodeEditor({
     (editor) => {
       editorRef.current = editor;
       editor.focus();
+      if (typeof window !== "undefined") {
+        (window as any).__monacoEditor = editor;
+        (window as any).__setMonacoValue = (newVal: string) => {
+          editor.setValue(newVal);
+          onChange(newVal);
+        };
+      }
     },
-    [],
+    [onChange],
   );
 
   // Loading state background matches current theme so there's no flash
