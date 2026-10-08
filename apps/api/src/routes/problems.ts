@@ -158,4 +158,162 @@ router.get("/:slug", async (req: Request<{ slug: string }>, res: Response): Prom
   });
 });
 
+/**
+ * GET /api/problems/:slug/near-misses
+ * Returns the bad patches for a problem pack, including:
+ * - Bad patch code
+ * - Explanation markdown (from accompanying .md file)
+ * - Measured validation score from meta.json
+ * - Real aggregate stat: "% of submissions on this problem matching this exact failure pattern"
+ *   derived from real Submission.verdictJson rows grouped by failed check IDs.
+ */
+router.get("/:slug/near-misses", async (req: Request<{ slug: string }>, res: Response): Promise<void> => {
+  const { slug } = req.params;
+  const packDir = path.join(PROBLEMS_ROOT, slug);
+  const metaPath = path.join(packDir, "meta.json");
+
+  if (!fs.existsSync(metaPath)) {
+    res.status(404).json({ ok: false, error: `Problem pack '${slug}' not found` });
+    return;
+  }
+
+  let meta: {
+    entryFile: string;
+    language: string;
+    badPatches?: Array<{
+      id: string;
+      file: string;
+      explanationFile: string;
+      title: string;
+      measuredScore: number;
+      maxScore: number;
+      summary: string;
+      failedChecks: string[];
+      passedChecks?: string[];
+    }>;
+  };
+  try {
+    meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to parse problem meta.json" });
+    return;
+  }
+
+  const badPatchesConfig = meta.badPatches || [];
+  const badPatchesDir = path.join(packDir, "bad_patches");
+
+  // Fetch real submissions for this problem to calculate real failure pattern frequency
+  const problem = await prisma.problem.findUnique({
+    where: { slug },
+    include: {
+      versions: {
+        select: {
+          id: true,
+          sessions: {
+            select: {
+              submissions: {
+                select: {
+                  id: true,
+                  score: true,
+                  verdictJson: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const allSubmissions: Array<{ id: string; score: number; verdictJson: any }> = [];
+  if (problem) {
+    for (const v of problem.versions) {
+      for (const s of v.sessions) {
+        allSubmissions.push(...s.submissions);
+      }
+    }
+  }
+
+  const totalSubmissions = allSubmissions.length;
+
+  const results = badPatchesConfig.map((patch) => {
+    const codePath = path.join(badPatchesDir, patch.file);
+    const explPath = path.join(badPatchesDir, patch.explanationFile);
+
+    const code = fs.existsSync(codePath) ? fs.readFileSync(codePath, "utf-8") : "";
+    const explanation = fs.existsSync(explPath) ? fs.readFileSync(explPath, "utf-8") : "";
+
+    // Derive real failure pattern matching from Submission.verdictJson
+    // Pattern matches if submission failed the exact checks specified in patch.failedChecks
+    let matchingSubmissionsCount = 0;
+    const targetFailedSet = new Set(patch.failedChecks.map((c) => c.toUpperCase()));
+
+    for (const sub of allSubmissions) {
+      const v = sub.verdictJson as { checks?: Array<{ id: string; passed: boolean }> };
+      if (v && Array.isArray(v.checks)) {
+        const failedChecks = v.checks
+          .filter((c) => !c.passed)
+          .map((c) => c.id.toUpperCase());
+
+        // Check if the submission failed at least all the target failed checks
+        const matchesPattern =
+          failedChecks.length > 0 &&
+          targetFailedSet.size > 0 &&
+          patch.failedChecks.every((fc) => failedChecks.includes(fc.toUpperCase()));
+
+        if (matchesPattern) {
+          matchingSubmissionsCount++;
+        }
+      }
+    }
+
+    let failureStat: {
+      percentage: number | null;
+      matchingCount: number;
+      totalCount: number;
+      formatted: string;
+    };
+
+    if (totalSubmissions >= 5) {
+      const pct = Math.round((matchingSubmissionsCount / totalSubmissions) * 100);
+      failureStat = {
+        percentage: pct,
+        matchingCount: matchingSubmissionsCount,
+        totalCount: totalSubmissions,
+        formatted: `${pct}% of submissions on this problem matched this exact failure pattern`,
+      };
+    } else {
+      failureStat = {
+        percentage: null,
+        matchingCount: matchingSubmissionsCount,
+        totalCount: totalSubmissions,
+        formatted: "Not enough data yet",
+      };
+    }
+
+    return {
+      id: patch.id,
+      title: patch.title,
+      filename: patch.file,
+      code,
+      explanation,
+      measuredScore: patch.measuredScore,
+      maxScore: patch.maxScore,
+      summary: patch.summary,
+      failedChecks: patch.failedChecks,
+      passedChecks: patch.passedChecks || [],
+      failureStat,
+    };
+  });
+
+  res.json({
+    ok: true,
+    data: {
+      slug,
+      nearMisses: results,
+      totalSubmissions,
+    },
+  });
+});
+
 export default router;

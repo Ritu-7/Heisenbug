@@ -9,5 +9,18 @@
   "files": [
     { "path": "src/charge.js",    "editable": true,  "label": "purchase handler" },
     { "path": "src/db/client.js", "editable": false, "label": "DB client (read-only)" }
+  ],
+  "badPatches": [
+    {
+      "id": "naive_check",
+      "file": "naive-check.js",
+      "explanationFile": "naive-check.md",
+      "title": "Double-Check Without Transaction Locking",
+      "measuredScore": 60,
+      "maxScore": 100,
+      "summary": "60/100 — passes visible tests (60/60), fails H1 and H2 (concurrent inventory oversell)",
+      "failedChecks": ["H1", "H2"],
+      "passedChecks": ["V1", "V2", "V3"]
+    }
   ]
 }

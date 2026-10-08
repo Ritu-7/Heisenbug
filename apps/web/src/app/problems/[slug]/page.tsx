@@ -21,11 +21,13 @@ import {
   submitSession,
   loginUser,
   getAuthToken,
+  fetchProblemNearMisses,
   type Session,
   type SessionEvent,
   type RunResult,
   type SubmitResult,
   type VerdictCheck,
+  type BadPatchNearMiss,
 } from "@/lib/api";
 import { DifficultyBadge, TrackBadge } from "@/components/badge";
 import { cn } from "@/lib/utils";
@@ -38,7 +40,7 @@ const CodeEditor = dynamic(
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type Tab = "description" | "hints" | "editorial" | "solution" | "submissions";
+type Tab = "description" | "hints" | "editorial" | "solution" | "submissions" | "near-misses";
 
 type ProblemFull = {
   id: string;
@@ -64,6 +66,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "editorial",   label: "Editorial" },
   { id: "solution",    label: "Solution" },
   { id: "submissions", label: "Submissions" },
+  { id: "near-misses", label: "Common Near-Misses" },
 ];
 
 const AUTOSAVE_DELAY_MS = 2000;
@@ -146,18 +149,27 @@ function TabBar({
   active,
   onSelect,
   isAssessment,
+  hasPassed,
 }: {
   active: Tab;
   onSelect: (t: Tab) => void;
   isAssessment: boolean;
+  hasPassed: boolean;
 }) {
   const lockedTabs: Set<Tab> = isAssessment
-    ? new Set(["hints", "editorial", "solution"])
+    ? new Set(["hints", "editorial", "solution", "near-misses"])
     : new Set();
+
+  const visibleTabs = TABS.filter((tab) => {
+    if (tab.id === "near-misses") {
+      return hasPassed && !isAssessment;
+    }
+    return true;
+  });
 
   return (
     <div className="flex border-b border-border bg-surface overflow-x-auto shrink-0">
-      {TABS.map((tab) => {
+      {visibleTabs.map((tab) => {
         const isLocked = lockedTabs.has(tab.id);
         return (
           <button
@@ -174,6 +186,7 @@ function TabBar({
           >
             <span>{tab.label}</span>
             {isLocked && <span className="text-[10px] opacity-75" aria-label="locked">🔒</span>}
+            {tab.id === "near-misses" && <span className="text-xs">💡</span>}
           </button>
         );
       })}
@@ -344,6 +357,95 @@ function SubmissionsPanel({ sessionId }: { sessionId: string | null }) {
   );
 }
 
+function NearMissesPanel({ slug }: { slug: string }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["near-misses", slug],
+    queryFn: () => fetchProblemNearMisses(slug),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="p-6 animate-pulse space-y-3">
+        <div className="h-6 w-1/3 bg-surface-2 rounded" />
+        <div className="h-24 bg-surface-2 rounded" />
+      </div>
+    );
+  }
+
+  if (isError || !data || data.nearMisses.length === 0) {
+    return (
+      <div className="p-6 text-center text-text-secondary text-sm">
+        No near-miss explanations recorded for this problem yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 space-y-6 overflow-y-auto">
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="text-base">💡</span>
+          <h3 className="font-serif text-base font-semibold text-text">
+            Common Near-Misses & Pitfalls
+          </h3>
+        </div>
+        <p className="text-xs text-text-secondary">
+          Real flawed solutions rejected by the validation pipeline, with explanations of which hidden checks catch them.
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        {data.nearMisses.map((patch: BadPatchNearMiss) => (
+          <div
+            key={patch.id}
+            className="rounded-lg border border-border bg-surface-2 p-4 space-y-3"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-3">
+              <div>
+                <h4 className="font-medium text-sm text-text">{patch.title}</h4>
+                <p className="text-xs font-mono text-text-secondary mt-0.5">{patch.filename}</p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-fail-soft text-fail border border-fail/30">
+                  {patch.measuredScore}/{patch.maxScore} pts
+                </span>
+                <span className="text-xs text-text-secondary font-mono">
+                  Fails: {patch.failedChecks.join(", ")}
+                </span>
+              </div>
+            </div>
+
+            {/* Real failure pattern aggregate statistic */}
+            <div className="rounded border border-accent/20 bg-accent-soft/30 px-3 py-2 flex items-center justify-between text-xs font-mono">
+              <span className="text-text-secondary">Failure pattern prevalence:</span>
+              <span className="font-semibold text-accent">
+                {patch.failureStat.formatted}
+              </span>
+            </div>
+
+            {/* Explanation Markdown */}
+            <div className="text-xs text-text space-y-2">
+              <MarkdownContent md={patch.explanation} emptyMessage="No explanation written." />
+            </div>
+
+            {/* Code Snippet */}
+            {patch.code && (
+              <details className="text-xs font-mono rounded bg-surface border border-border p-2">
+                <summary className="cursor-pointer text-text-secondary hover:text-text font-sans text-xs">
+                  View bad patch code ({patch.filename})
+                </summary>
+                <pre className="mt-2 p-3 rounded bg-surface-2 overflow-x-auto text-[11px] text-text">
+                  <code>{patch.code}</code>
+                </pre>
+              </details>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Tab content with crossfade ─────────────────────────────────────────────
 
 function TabContent({
@@ -351,11 +453,13 @@ function TabContent({
   problem,
   sessionId,
   isAssessment,
+  hasPassed,
 }: {
   activeTab: Tab;
   problem: ProblemFull;
   sessionId: string | null;
   isAssessment: boolean;
+  hasPassed: boolean;
 }) {
   const reduce = useReducedMotion();
   const isLocked = isAssessment && (activeTab === "hints" || activeTab === "editorial" || activeTab === "solution");
@@ -397,6 +501,9 @@ function TabContent({
               )}
               {activeTab === "submissions" && (
                 <SubmissionsPanel sessionId={sessionId} />
+              )}
+              {activeTab === "near-misses" && hasPassed && (
+                <NearMissesPanel slug={problem.slug} />
               )}
             </>
           )}
@@ -596,6 +703,24 @@ function WorkspaceContent({ slug }: { slug: string }) {
     },
   });
 
+  // ── Query: Submissions (to determine if candidate has achieved passed: true) ──
+  const { data: userSubmissions = [] } = useQuery({
+    queryKey: ["submissions", activeSession?.id],
+    queryFn: async () => {
+      if (!activeSession?.id) return [];
+      const res = await fetch(`${API_BASE}/api/sessions/${activeSession.id}/submissions`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("heisenbug_jwt_token")}` },
+      });
+      const json = await res.json();
+      return json.data ?? [];
+    },
+    enabled: !!activeSession?.id,
+  });
+
+  const hasPassed =
+    submitResult?.verdict?.passed === true ||
+    userSubmissions.some((s: { verdictJson?: { passed?: boolean } }) => s.verdictJson?.passed === true);
+
   // ── Render ────────────────────────────────────────────────────────────
 
   if (problemLoading) return (
@@ -728,12 +853,18 @@ function WorkspaceContent({ slug }: { slug: string }) {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left: Description tabs */}
         <div className="w-[44%] flex flex-col border-r border-border min-h-0">
-          <TabBar active={activeTab} onSelect={setActiveTab} isAssessment={isAssessment} />
+          <TabBar
+            active={activeTab}
+            onSelect={setActiveTab}
+            isAssessment={isAssessment}
+            hasPassed={hasPassed}
+          />
           <TabContent
             activeTab={activeTab}
             problem={problem}
             sessionId={activeSession?.id ?? null}
             isAssessment={isAssessment}
+            hasPassed={hasPassed}
           />
         </div>
 

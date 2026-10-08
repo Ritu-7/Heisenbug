@@ -48,6 +48,9 @@ test.describe('Candidate Practice Flow', () => {
     // Verify hints tab renders real content (either hint cards or fallback placeholder)
     await expect(page.locator('text=No hints written yet for this problem.')).toBeVisible();
 
+    // Verify "Common Near-Misses" tab is NOT visible before solving
+    await expect(page.getByRole('button', { name: /Common Near-Misses/i })).not.toBeVisible();
+
     // Switch back to Description tab
     const descTab = page.getByRole('button', { name: /^Description/i });
     await descTab.click();
@@ -102,5 +105,19 @@ test.describe('Candidate Practice Flow', () => {
     await expect(submitVerdict).toBeVisible({ timeout: 60_000 });
     await expect(page.locator('text=100/100 pts (100%)')).toBeVisible();
     await expect(page.locator('text=✓').first()).toBeVisible();
+
+    // 10. Assert "Common Near-Misses" tab is now visible ONLY after genuine pass
+    const nearMissesTab = page.getByRole('button', { name: /Common Near-Misses/i });
+    await expect(nearMissesTab).toBeVisible();
+    await nearMissesTab.click();
+
+    // Verify bad patch score from validate.ts / meta.json (85/100 pts) and explanation render
+    await expect(page.getByRole('heading', { name: 'Common Near-Misses & Pitfalls' })).toBeVisible();
+    await expect(page.locator('text=In-Memory Map Cache')).toBeVisible();
+    await expect(page.locator('text=85/100 pts')).toBeVisible();
+    await expect(page.locator('text=Fails: H1')).toBeVisible();
+    await expect(page.locator('text=The Flaw')).toBeVisible();
+    await expect(page.locator('text=Which Hidden Check Catches It')).toBeVisible();
+    await expect(page.locator('text=Not enough data yet').or(page.locator('text=% of submissions'))).toBeVisible();
   });
 });

@@ -12,5 +12,18 @@
   "testCommand": "pytest --json-report --json-report-file=/dev/stdout -q",
   "files": [
     { "path": "src/train.py", "editable": true,  "label": "training pipeline" }
+  ],
+  "badPatches": [
+    {
+      "id": "log_transform_leaky",
+      "file": "log_transform_leaky.py",
+      "explanationFile": "log_transform_leaky.md",
+      "title": "Log-Transforming Leaky Column Instead of Dropping",
+      "measuredScore": 60,
+      "maxScore": 100,
+      "summary": "60/100 — passes visible tests (60/60), fails H1 (production simulation) and H2 (feature inspection)",
+      "failedChecks": ["H1", "H2"],
+      "passedChecks": ["V1", "V2", "V3"]
+    }
   ]
 }

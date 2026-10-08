@@ -5,5 +5,18 @@
   "entryFile": "src/comments.js",
   "language": "javascript",
   "testFramework": "jest",
-  "testCommand": "npx jest --json --no-coverage --forceExit"
+  "testCommand": "npx jest --json --no-coverage --forceExit",
+  "badPatches": [
+    {
+      "id": "naive_blacklist",
+      "file": "naive_blacklist.js",
+      "explanationFile": "naive_blacklist.md",
+      "title": "Naive Substring Blacklist",
+      "measuredScore": 60,
+      "maxScore": 100,
+      "summary": "60/100 — passes visible tests (60/60), fails H1 (case variation) and H2 (attribute breakout)",
+      "failedChecks": ["H1", "H2"],
+      "passedChecks": ["V1", "V2", "V3"]
+    }
+  ]
 }

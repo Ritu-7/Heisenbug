@@ -440,6 +440,41 @@ export async function startInvitation(token: string): Promise<{
   return data.data;
 }
 
+// ── Near-Miss Teaching Content ──────────────────────────────────────────
+
+export interface BadPatchNearMiss {
+  id: string;
+  title: string;
+  filename: string;
+  code: string;
+  explanation: string;
+  measuredScore: number;
+  maxScore: number;
+  summary: string;
+  failedChecks: string[];
+  passedChecks: string[];
+  failureStat: {
+    percentage: number | null;
+    matchingCount: number;
+    totalCount: number;
+    formatted: string;
+  };
+}
+
+export interface ProblemNearMissesResponse {
+  slug: string;
+  nearMisses: BadPatchNearMiss[];
+  totalSubmissions: number;
+}
+
+/** GET /api/problems/:slug/near-misses */
+export async function fetchProblemNearMisses(slug: string): Promise<ProblemNearMissesResponse> {
+  const res = await apiFetch<{ ok: boolean; data: ProblemNearMissesResponse }>(
+    `/api/problems/${slug}/near-misses`,
+  );
+  return res.data;
+}
+
 // ── Admin Problem Authoring ───────────────────────────────────────────────
 
 export interface DraftProblemPayload {

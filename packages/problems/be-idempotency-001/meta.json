@@ -9,5 +9,18 @@
   "files": [
     { "path": "src/charge.js", "editable": true,  "label": "checkout handler" },
     { "path": "src/db/client.js", "editable": false, "label": "DB client (read-only)" }
+  ],
+  "badPatches": [
+    {
+      "id": "in_memory_map",
+      "file": "in_memory_map.js",
+      "explanationFile": "in_memory_map.md",
+      "title": "In-Memory Map Cache",
+      "measuredScore": 85,
+      "maxScore": 100,
+      "summary": "85/100 — passes visible tests (60/60) and H2/H3, fails H1 (concurrent duplicate charges)",
+      "failedChecks": ["H1"],
+      "passedChecks": ["V1", "V2", "V3", "H2", "H3"]
+    }
   ]
 }

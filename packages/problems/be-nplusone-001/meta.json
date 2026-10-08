@@ -12,5 +12,18 @@
       "editable": true,
       "label": "implementation"
     }
+  ],
+  "badPatches": [
+    {
+      "id": "naive_solution",
+      "file": "naive_solution.js",
+      "explanationFile": "naive_solution.md",
+      "title": "In-Memory Request Caching",
+      "measuredScore": 80,
+      "maxScore": 100,
+      "summary": "80/100 — passes visible tests (60/60) and H2, fails H1 (O(1) query count on first request)",
+      "failedChecks": ["H1"],
+      "passedChecks": ["V1", "V2", "H2"]
+    }
   ]
 }
