@@ -105,7 +105,7 @@ test.describe('Candidate Practice Flow', () => {
     await expect(page.locator('text=Skip & Submit')).toBeVisible();
 
     // Select 80% confidence and submit
-    const confidence80Btn = page.getByRole('button', { name: '80%' });
+    const confidence80Btn = page.getByRole('button', { name: '80%', exact: true });
     await expect(confidence80Btn).toBeVisible();
     await confidence80Btn.click();
 
