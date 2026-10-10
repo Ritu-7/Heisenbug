@@ -25,7 +25,7 @@ async function getAuthToken(email) {
 
 async function main() {
   console.log("================================================================================");
-  console.log("HEISENBUG SESSION EVENT REPLAY & CANDIDATE REPORT — REAL PROOF");
+  console.log("REPLAY RENDERING & RBAC TEST (synthetic event data)");
   console.log("================================================================================\n");
 
   // 1. Authenticate users across roles
