@@ -9,6 +9,10 @@ import runRouter from "./routes/run";
 import assessmentsRouter from "./routes/assessments";
 import invitationsRouter from "./routes/invitations";
 import adminRouter from "./routes/admin";
+import postmortemsRouter from "./routes/postmortems";
+import mentorRouter from "./routes/mentor";
+import aiCollabRouter from "./routes/ai-collab";
+import forkRouter from "./routes/fork";
 import { prisma } from "./lib/prisma";
 
 const app = express();
@@ -26,7 +30,12 @@ app.get("/health", (_req, res) => {
 app.use("/api/auth", authRouter);
 app.use("/api/problems", problemsRouter);
 app.use("/api/sessions", sessionsRouter);
-app.use("/api/sessions", runRouter); // run + submit endpoints
+app.use("/api/sessions", runRouter);          // run + submit endpoints
+app.use("/api/sessions", postmortemsRouter);  // postmortem + share endpoints
+app.use("/api/sessions", mentorRouter);       // AI mentor endpoints
+app.use("/api/sessions", aiCollabRouter);     // AI collaboration signals
+app.use("/api/sessions", forkRouter);         // session fork (recruiter/admin)
+app.use("/api/postmortems", postmortemsRouter); // public /api/postmortems/public/:token
 app.use("/api/assessments", assessmentsRouter);
 app.use("/api/invitations", invitationsRouter);
 app.use("/api/admin", adminRouter);

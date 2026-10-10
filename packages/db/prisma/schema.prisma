@@ -108,6 +108,7 @@ model Session {
   submissions Submission[]
   hintUses  HintUse[]
   invitation Invitation?
+  postmortemShare PostmortemShare?
 
   @@map("sessions")
 }
@@ -182,4 +183,14 @@ model Invitation {
   session        Session?   @relation(fields: [sessionId], references: [id])
 
   @@map("invitations")
+}
+
+model PostmortemShare {
+  id        String   @id @default(cuid())
+  sessionId String   @unique @map("session_id")
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  token     String   @unique @default(cuid())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("postmortem_shares")
 }

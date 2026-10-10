@@ -30,6 +30,7 @@ import {
   type BadPatchNearMiss,
 } from "@/lib/api";
 import { DifficultyBadge, TrackBadge } from "@/components/badge";
+import { AIMentorPanel } from "@/components/ai-mentor-panel";
 import { cn } from "@/lib/utils";
 
 // Monaco must be dynamically imported to skip SSR
@@ -622,6 +623,7 @@ function WorkspaceContent({ slug }: { slug: string }) {
   const [runResult, setRunResult] = useState<RunResult | null>(null);
   const [submitResult, setSubmitResult] = useState<SubmitResult | null>(null);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [mentorOpen, setMentorOpen] = useState(false);
 
   // ── Query: Problem ────────────────────────────────────────────────────
   const { data: problem, isLoading: problemLoading, isError: problemError } = useQuery({
@@ -836,6 +838,22 @@ function WorkspaceContent({ slug }: { slug: string }) {
             </button>
           )}
 
+          {/* ── AI Mentor toggle (Practice mode only) ── */}
+          {!isAssessment && activeSession && (
+            <button
+              onClick={() => setMentorOpen((o) => !o)}
+              className={cn(
+                "px-3 py-1.5 rounded-md text-xs font-semibold font-mono transition-colors border",
+                mentorOpen
+                  ? "bg-accent text-white border-accent"
+                  : "bg-surface-2 text-text border-border hover:border-accent/40 hover:text-accent",
+              )}
+              title="AI Mentor (Practice mode)"
+            >
+              🤖 Mentor
+            </button>
+          )}
+
           {/* ▶ Run */}
           <button
             onClick={() => runMutation.mutate()}
@@ -1042,6 +1060,26 @@ function WorkspaceContent({ slug }: { slug: string }) {
             )}
           </AnimatePresence>
 
+          {/* Postmortem link (after a passing submit) */}
+          {submitResult?.verdict?.passed && activeSession && (
+            <motion.div
+              initial={reduce ? false : { opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              transition={{ duration: 0.25, delay: 0.4 }}
+              className="border-t border-pass/30 bg-pass-soft/30 px-4 py-2 shrink-0 flex items-center justify-between"
+            >
+              <span className="text-xs font-mono text-pass font-semibold">
+                🎉 Session complete!
+              </span>
+              <a
+                href={`/postmortems/${activeSession.id}`}
+                className="text-xs font-mono text-pass hover:text-pass/80 underline"
+              >
+                View session postmortem →
+              </a>
+            </motion.div>
+          )}
+
           {/* Status bar */}
           <div
             className="flex items-center justify-between px-4 py-1 shrink-0"
@@ -1054,6 +1092,16 @@ function WorkspaceContent({ slug }: { slug: string }) {
             </div>
           </div>
         </div>
+
+        {/* AI Mentor side panel */}
+        {activeSession && (
+          <AIMentorPanel
+            sessionId={activeSession.id}
+            isAssessment={isAssessment}
+            isOpen={mentorOpen}
+            onClose={() => setMentorOpen(false)}
+          />
+        )}
       </div>
     </div>
   );

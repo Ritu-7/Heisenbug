@@ -8,6 +8,7 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@heisenbug/db": "*",
     "@heisenbug/shared-types": "*",
     "@paralleldrive/cuid2": "^3.3.0",

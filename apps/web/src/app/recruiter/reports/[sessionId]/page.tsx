@@ -1,16 +1,43 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import Link from "next/link";
+import { useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   fetchSession,
   fetchSessionEvents,
   fetchSessionSubmissions,
+  getAuthToken,
 } from "@/lib/api";
 import { DifficultyBadge } from "@/components/badge";
 import { SessionReplay } from "@/components/session-replay";
 import { cn } from "@/lib/utils";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+
+async function fetchAICollab(sessionId: string) {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/ai-collab`, {
+    headers: { Authorization: `Bearer ${getAuthToken()}` },
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.data;
+}
+
+async function forkSession(sessionId: string, atTimestamp?: string) {
+  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/fork`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${getAuthToken()}`,
+    },
+    body: JSON.stringify(atTimestamp ? { atTimestamp } : {}),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error ?? "Fork failed");
+  return data.data;
+}
 
 export default function CandidateReportPage({
   params,
@@ -37,6 +64,19 @@ export default function CandidateReportPage({
   const submissionsQuery = useQuery({
     queryKey: ["session-submissions", sessionId],
     queryFn: () => fetchSessionSubmissions(sessionId),
+  });
+
+  // 4. Fetch AI collaboration signals (purely advisory)
+  const aiCollabQuery = useQuery({
+    queryKey: ["ai-collab", sessionId],
+    queryFn: () => fetchAICollab(sessionId),
+  });
+
+  // 5. Fork action state
+  const [forkResult, setForkResult] = useState<{ workspaceUrl: string; forkBanner: string } | null>(null);
+  const forkMutation = useMutation({
+    mutationFn: () => forkSession(sessionId),
+    onSuccess: (data) => setForkResult(data),
   });
 
   const isLoading = sessionQuery.isLoading || eventsQuery.isLoading;
@@ -175,9 +215,95 @@ export default function CandidateReportPage({
             <span className="px-3 py-1.5 rounded-lg border border-border bg-surface-2 text-xs font-mono text-text">
               {latestSubmission.score === 100 ? "✓ Full marks" : "Evaluated"}
             </span>
+            {(latestSubmission.verdictJson as { passed?: boolean })?.passed && (
+              <Link
+                href={`/postmortems/${sessionId}`}
+                className="px-3 py-1.5 rounded-lg border border-pass/30 bg-pass-soft text-xs font-mono text-pass hover:bg-pass-soft/80 transition-colors"
+              >
+                View postmortem →
+              </Link>
+            )}
           </div>
         </motion.div>
       )}
+
+      {/* ── AI Collaboration Signals (purely advisory) ────────────────────── */}
+      {aiCollabQuery.data && (() => {
+        const s = aiCollabQuery.data.signals;
+        const labelColors: Record<string, string> = {
+          verified_before_using: "text-pass bg-pass-soft border-pass/30",
+          adapted_ai_suggestions: "text-accent bg-accent-soft border-accent/30",
+          used_without_verification: "text-warning bg-warning-soft border-warning/30",
+          no_ai_used: "text-text-secondary bg-surface-2 border-border",
+        };
+        return (
+          <motion.div
+            initial={reduce ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, delay: 0.05 }}
+            className="rounded-xl border border-border bg-surface p-5 space-y-3"
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-mono font-semibold uppercase tracking-wider text-text-secondary">AI Collaboration Signals</h2>
+              <span className="text-[10px] font-mono text-text-secondary italic">Advisory only — does not affect verdict</span>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span className={cn("px-2.5 py-1 rounded-full text-xs font-mono font-semibold border", labelColors[s.label] ?? "text-text-secondary bg-surface-2 border-border")}>
+                  {s.label === "verified_before_using" && "✓ AI: verified before using"}
+                  {s.label === "adapted_ai_suggestions" && "↗ AI: adapted suggestions"}
+                  {s.label === "used_without_verification" && "⚠ AI: used without verification"}
+                  {s.label === "no_ai_used" && "— No AI assistance used"}
+                </span>
+                {s.usedAIMentor && s.medianMsToNextRun !== null && (
+                  <span className="text-xs font-mono text-text-secondary">
+                    {s.mentorMessagePairs} exchange{s.mentorMessagePairs !== 1 ? "s" : ""} · median {Math.round(s.medianMsToNextRun / 1000)}s to next run
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-text-secondary font-mono">{s.labelDetail}</p>
+              {s.postMentorCodeOriginalityFraction !== null && (
+                <p className="text-xs font-mono text-text-secondary">
+                  Post-mentor code originality: <span className="text-text font-semibold">{Math.round(s.postMentorCodeOriginalityFraction * 100)}%</span>{" "}
+                  ({s.postMentorCodeOriginalityFraction > 0.5 ? "modified significantly" : "near-verbatim"})
+                </p>
+              )}
+            </div>
+          </motion.div>
+        );
+      })()}
+
+      {/* ── Fork Session Action ───────────────────────────────────────────── */}
+      <motion.div
+        initial={reduce ? false : { opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, delay: 0.1 }}
+        className="rounded-xl border border-border bg-surface p-5 space-y-3"
+      >
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xs font-mono font-semibold uppercase tracking-wider text-text-secondary">Fork Session</h2>
+            <p className="text-xs text-text-secondary mt-1">Start from this candidate&apos;s latest code. Clearly labeled fork — does not affect candidate stats.</p>
+          </div>
+          <button
+            onClick={() => forkMutation.mutate()}
+            disabled={forkMutation.isPending}
+            className={cn("px-4 py-2 rounded-lg text-xs font-mono font-semibold transition-colors border shrink-0 border-accent/40 text-accent hover:bg-accent/10 disabled:opacity-50 disabled:cursor-not-allowed")}
+          >
+            {forkMutation.isPending ? "Forking..." : "⑂ Fork from latest"}
+          </button>
+        </div>
+        {forkResult && (
+          <div className="rounded-lg border border-pass/30 bg-pass-soft/20 p-3 space-y-1">
+            <p className="text-xs font-mono text-pass font-semibold">✓ Fork created</p>
+            <p className="text-xs text-text-secondary font-mono">{forkResult.forkBanner}</p>
+            <a href={forkResult.workspaceUrl} className="inline-block text-xs font-mono text-accent hover:underline">Open forked workspace →</a>
+          </div>
+        )}
+        {forkMutation.isError && (
+          <p className="text-xs text-fail font-mono">Fork failed: {(forkMutation.error as Error).message}</p>
+        )}
+      </motion.div>
 
       {/* ── Interactive Replay Component ─────────────────────────────────── */}
       <section className="space-y-3">

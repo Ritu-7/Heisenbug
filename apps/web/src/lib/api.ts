@@ -529,3 +529,95 @@ export async function fetchAdminProblems(): Promise<Problem[]> {
   const res = await apiFetch<{ ok: boolean; data: Problem[] }>("/api/admin/problems");
   return res.data;
 }
+
+// ── Postmortem ──────────────────────────────────────────────────────────────
+
+export interface PostmortemDoc {
+  sessionId: string;
+  generatedAt: string;
+
+  problem: {
+    title: string;
+    slug: string;
+    track: string;
+    difficulty: string;
+    estMinutes: number;
+    skills: string[];
+    ticketSummary: string;
+    editorial: string;
+  };
+
+  candidate: {
+    name: string;
+    email: string;
+  };
+
+  timeline: {
+    sessionStarted: string;
+    firstEdit: string | null;
+    firstRun: string | null;
+    finalSubmit: string | null;
+    totalDurationMs: number | null;
+    wallClockMinutes: number | null;
+  };
+
+  attempts: {
+    runCount: number;
+    passingRunBeforeSubmit: boolean;
+    hintsUsed: Array<{
+      hintIndex: number;
+      penalty: number;
+      description: string;
+      at: string;
+    }>;
+    totalPenalty: number;
+  };
+
+  verdict: {
+    passed: boolean;
+    score: number;
+    checks: Array<{
+      id: string;
+      weight: number;
+      passed: boolean;
+      message?: string;
+    }>;
+    submittedAt: string;
+    diffText: string;
+  };
+
+  narrative: {
+    whatBroke: string;
+    rootCauseHint: string;
+    howLongItTook: string;
+    whatWasTried: string;
+  };
+
+  shareToken: string | null;
+}
+
+/** GET /api/sessions/:id/postmortem — returns structured postmortem from real event timeline */
+export async function fetchPostmortem(sessionId: string): Promise<PostmortemDoc> {
+  const data = await apiFetch<{ ok: boolean; data: PostmortemDoc }>(`/api/sessions/${sessionId}/postmortem`);
+  return data.data;
+}
+
+/** POST /api/sessions/:id/postmortem/share — generate (or fetch existing) public share token */
+export async function sharePostmortem(sessionId: string): Promise<{ token: string; shareUrl: string; sessionId: string }> {
+  const data = await apiFetch<{ ok: boolean; data: { token: string; shareUrl: string; sessionId: string } }>(
+    `/api/sessions/${sessionId}/postmortem/share`,
+    { method: "POST" },
+  );
+  return data.data;
+}
+
+/** GET /api/postmortems/public/:token — public no-auth endpoint for shared postmortem links */
+export async function fetchPublicPostmortem(token: string): Promise<PostmortemDoc> {
+  const res = await fetch(`${API_BASE}/api/postmortems/public/${token}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error((body as { error?: string }).error ?? res.statusText);
+  }
+  const data = await res.json() as { ok: boolean; data: PostmortemDoc };
+  return data.data;
+}
