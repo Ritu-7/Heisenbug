@@ -237,7 +237,7 @@ function VerdictPanel({
   result,
   kind,
 }: {
-  result: RunResult | null;
+  result: (RunResult & { confidencePct?: number | null }) | null;
   kind: "run" | "submit";
 }) {
   const reduce = useReducedMotion();
@@ -271,6 +271,40 @@ function VerdictPanel({
           {(result.durationMs / 1000).toFixed(1)}s
         </span>
       </div>
+
+      {/* Real Calibration Comparison */}
+      {kind === "submit" && typeof result.confidencePct === "number" && (() => {
+        const conf = result.confidencePct;
+        const failedChecks = result.checks.filter((c: VerdictCheck) => !c.passed).map((c: VerdictCheck) => c.id);
+        const compText =
+          failedChecks.length === 0
+            ? `You said ${conf}% confident — you scored ${result.score}/${totalWeight}`
+            : `You said ${conf}% confident — you scored ${result.score}/${totalWeight}, ${failedChecks.join(" and ")} failed`;
+
+        const scorePct = Math.round((result.score / totalWeight) * 100);
+        const diff = conf - scorePct;
+        const calibrationLabel =
+          diff > 5 ? "Overconfident" : diff < -5 ? "Underconfident" : "Well-calibrated";
+
+        return (
+          <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-1.5 rounded bg-surface/70 border border-border/60 text-xs font-mono">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-text-secondary text-[11px]">Calibration:</span>
+              <span className="text-text font-medium">{compText}</span>
+            </div>
+            <span
+              className={cn(
+                "px-2 py-0.5 rounded text-[10px] font-semibold uppercase font-mono border",
+                calibrationLabel === "Overconfident" && "bg-warning-soft text-warning border-warning/30",
+                calibrationLabel === "Underconfident" && "bg-accent-soft text-accent border-accent/30",
+                calibrationLabel === "Well-calibrated" && "bg-pass-soft text-pass border-pass/30",
+              )}
+            >
+              {calibrationLabel}
+            </span>
+          </div>
+        );
+      })()}
 
       {/* Staggered check rows */}
       <div className="space-y-1">
@@ -336,7 +370,7 @@ function SubmissionsPanel({ sessionId }: { sessionId: string | null }) {
   return (
     <div className="p-4 space-y-2">
       <AnimatePresence initial={false}>
-        {submissions.map((sub: { id: string; score: number; createdAt: string }, idx: number) => (
+        {submissions.map((sub: { id: string; score: number; confidencePct?: number | null; createdAt: string }, idx: number) => (
           <motion.div
             key={sub.id}
             initial={reduce ? false : { opacity: 0, y: 6 }}
@@ -345,7 +379,14 @@ function SubmissionsPanel({ sessionId }: { sessionId: string | null }) {
             className="p-3 rounded-lg border border-border bg-surface-2"
           >
             <div className="flex items-center justify-between text-xs font-mono">
-              <span className="text-text-secondary">{new Date(sub.createdAt).toLocaleString()}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-text-secondary">{new Date(sub.createdAt).toLocaleString()}</span>
+                {typeof sub.confidencePct === "number" && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface border border-border text-text-secondary font-mono">
+                    {sub.confidencePct}% confident
+                  </span>
+                )}
+              </div>
               <span className={cn("font-semibold", sub.score >= 70 ? "text-pass" : "text-fail")}>
                 {sub.score}/100 pts
               </span>
@@ -691,15 +732,19 @@ function WorkspaceContent({ slug }: { slug: string }) {
   });
 
   // ── Submit mutation ───────────────────────────────────────────────────
+  const [showConfidencePrompt, setShowConfidencePrompt] = useState(false);
+  const [selectedConfidence, setSelectedConfidence] = useState<number>(80);
+
   const submitMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: (confidence?: number | null) => {
       if (!activeSession?.id) throw new Error("No active session");
-      return submitSession(activeSession.id);
+      return submitSession(activeSession.id, confidence);
     },
     onSuccess: (data) => {
       setSubmitResult(data);
       setRunResult(null);
       queryClient.invalidateQueries({ queryKey: ["submissions", activeSession?.id] });
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
     },
   });
 
@@ -739,7 +784,12 @@ function WorkspaceContent({ slug }: { slug: string }) {
   const isRunning   = runMutation.isPending;
   const isSubmitting = submitMutation.isPending;
   const verdictToShow = submitResult
-    ? { ...submitResult.verdict, rawOutput: submitResult.rawOutput, durationMs: submitResult.durationMs }
+    ? {
+        ...submitResult.verdict,
+        rawOutput: submitResult.rawOutput,
+        durationMs: submitResult.durationMs,
+        confidencePct: submitResult.submission?.confidencePct,
+      }
     : runResult;
 
   // Editor chrome colors — theme-aware
@@ -800,24 +850,102 @@ function WorkspaceContent({ slug }: { slug: string }) {
             {isRunning ? "▶ Running..." : "▶ Run"}
           </button>
 
-          {/* Submit */}
-          <button
-            onClick={() => submitMutation.mutate()}
-            disabled={!activeSession || isRunning || isSubmitting}
-            className={cn(
-              "px-3.5 py-1.5 rounded-md text-xs font-semibold font-mono transition-colors",
-              "bg-accent text-white",
-              "hover:bg-accent/90",
-              "disabled:opacity-40 disabled:cursor-not-allowed",
-            )}
-          >
-            {isSubmitting ? (
-              <span className="inline-flex items-center gap-1.5">
-                <span className="inline-block h-3 w-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                Submitting...
-              </span>
-            ) : "Submit"}
-          </button>
+          {/* Submit with inline confidence prompt */}
+          <div className="relative">
+            <button
+              onClick={() => {
+                if (!showConfidencePrompt) {
+                  setShowConfidencePrompt(true);
+                } else {
+                  setShowConfidencePrompt(false);
+                  submitMutation.mutate(selectedConfidence);
+                }
+              }}
+              disabled={!activeSession || isRunning || isSubmitting}
+              className={cn(
+                "px-3.5 py-1.5 rounded-md text-xs font-semibold font-mono transition-colors",
+                "bg-accent text-white",
+                "hover:bg-accent/90",
+                "disabled:opacity-40 disabled:cursor-not-allowed",
+              )}
+            >
+              {isSubmitting ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-block h-3 w-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  Submitting...
+                </span>
+              ) : "Submit"}
+            </button>
+
+            {/* Inline confidence prompt — optional, not blocking */}
+            <AnimatePresence>
+              {showConfidencePrompt && !isSubmitting && (
+                <motion.div
+                  initial={reduce ? false : { opacity: 0, y: -4, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute right-0 top-full mt-2 z-50 w-72 rounded-lg border border-border bg-surface p-3 shadow-xl space-y-2.5"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-text font-mono">
+                      How confident are you this passes?
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowConfidencePrompt(false)}
+                      className="text-text-secondary hover:text-text text-xs p-1 leading-none"
+                      aria-label="Close"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* 5-button scale */}
+                  <div className="grid grid-cols-5 gap-1">
+                    {[20, 40, 60, 80, 100].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setSelectedConfidence(pct)}
+                        className={cn(
+                          "py-1.5 px-0.5 rounded text-xs font-mono font-medium border transition-colors",
+                          selectedConfidence === pct
+                            ? "bg-accent text-white border-accent shadow-sm"
+                            : "bg-surface-2 text-text hover:bg-surface border-border",
+                        )}
+                      >
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-border">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowConfidencePrompt(false);
+                        submitMutation.mutate(null);
+                      }}
+                      className="text-xs font-mono text-text-secondary hover:text-text underline"
+                    >
+                      Skip & Submit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowConfidencePrompt(false);
+                        submitMutation.mutate(selectedConfidence);
+                      }}
+                      className="px-2.5 py-1 rounded text-xs font-semibold font-mono bg-accent text-white hover:bg-accent/90"
+                    >
+                      Submit ({selectedConfidence}%)
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 

@@ -49,7 +49,6 @@ router.get("/", requireAuth, async (req: Request, res: Response): Promise<void> 
       variant: true,
       submissions: {
         orderBy: { createdAt: "desc" },
-        take: 1,
       },
     },
   });

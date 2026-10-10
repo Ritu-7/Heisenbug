@@ -95,16 +95,33 @@ test.describe('Candidate Practice Flow', () => {
     // Wait for autosave debounce (2000ms) to persist CODE_SAVE event to database
     await expect(page.locator('text=Saved to database')).toBeVisible({ timeout: 10_000 });
 
-    // 8. Submit the reference solution
+    // 8. Submit the reference solution with confidence rating
     const submitBtn = page.getByRole('button', { name: /^Submit$/i });
     await expect(submitBtn).toBeEnabled();
     await submitBtn.click();
+
+    // Verify inline confidence prompt appears right before submit fires
+    await expect(page.locator('text=How confident are you this passes?')).toBeVisible();
+    await expect(page.locator('text=Skip & Submit')).toBeVisible();
+
+    // Select 80% confidence and submit
+    const confidence80Btn = page.getByRole('button', { name: '80%' });
+    await expect(confidence80Btn).toBeVisible();
+    await confidence80Btn.click();
+
+    const confirmSubmitBtn = page.getByRole('button', { name: /Submit \(80%\)/i });
+    await expect(confirmSubmitBtn).toBeVisible();
+    await confirmSubmitBtn.click();
 
     // 9. Assert real 100/100 verdict renders in the UI
     const submitVerdict = page.locator('text=Submit verdict');
     await expect(submitVerdict).toBeVisible({ timeout: 60_000 });
     await expect(page.locator('text=100/100 pts (100%)')).toBeVisible();
     await expect(page.locator('text=✓').first()).toBeVisible();
+
+    // Assert real calibration comparison renders:
+    // "You said 80% confident — you scored 100/100"
+    await expect(page.locator('text=You said 80% confident — you scored 100/100')).toBeVisible();
 
     // 10. Assert "Common Near-Misses" tab is now visible ONLY after genuine pass
     const nearMissesTab = page.getByRole('button', { name: /Common Near-Misses/i });
@@ -119,5 +136,13 @@ test.describe('Candidate Practice Flow', () => {
     await expect(page.locator('text=The Flaw').first()).toBeVisible();
     await expect(page.locator('text=Which Hidden Check Catches It').first()).toBeVisible();
     await expect(page.locator('text=Not enough data yet').or(page.locator('text=% of submissions')).first()).toBeVisible();
+
+    // 11. Navigate to candidate dashboard and verify real calibration gap stat
+    await page.goto('/dashboard');
+    await expect(page.getByRole('heading', { name: 'Candidate Dashboard' })).toBeVisible();
+    await expect(page.locator('text=Calibration gap').first()).toBeVisible();
+    // 80% confidence - 100 actual = -20% -> Underconfident
+    await expect(page.locator('text=Underconfident').first()).toBeVisible();
+    await expect(page.locator('text=-20%')).toBeVisible();
   });
 });

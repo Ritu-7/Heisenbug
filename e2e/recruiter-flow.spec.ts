@@ -99,6 +99,10 @@ test.describe('Recruiter Flow', () => {
     const submitBtn = candidatePage.getByRole('button', { name: /^Submit$/i });
     await expect(submitBtn).toBeEnabled({ timeout: 15_000 });
     await submitBtn.click();
+    const skipBtn = candidatePage.locator('text=Skip & Submit');
+    if (await skipBtn.isVisible({ timeout: 2000 })) {
+      await skipBtn.click();
+    }
 
     // Wait for submit verdict to appear on the candidate page
     await expect(candidatePage.locator('text=Submit verdict')).toBeVisible({ timeout: 60_000 });

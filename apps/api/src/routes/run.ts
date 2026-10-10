@@ -541,6 +541,14 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
       `b/${meta.entryFile} (submission)`,
     );
 
+    const rawConfidence = req.body?.confidencePct;
+    const parsedConfidence =
+      typeof rawConfidence === "number" && !isNaN(rawConfidence)
+        ? Math.max(0, Math.min(100, Math.round(rawConfidence)))
+        : typeof rawConfidence === "string" && rawConfidence.trim() !== "" && !isNaN(Number(rawConfidence))
+        ? Math.max(0, Math.min(100, Math.round(Number(rawConfidence))))
+        : null;
+
     // Save Submission row to Postgres, record SUBMIT event, and mark session as SUBMITTED
     const [submission] = await prisma.$transaction([
       prisma.submission.create({
@@ -549,6 +557,7 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
           verdictJson: verdictJson as unknown as Prisma.InputJsonObject,
           diffText,
           score: result.score,
+          confidencePct: parsedConfidence,
         },
       }),
       prisma.session.update({
@@ -565,6 +574,7 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
             passed: result.passed,
             checks: result.checks,
             durationMs,
+            confidencePct: parsedConfidence,
           } as unknown as Prisma.InputJsonObject,
         },
       }),

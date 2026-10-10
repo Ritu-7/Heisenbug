@@ -130,6 +130,7 @@ model Submission {
   diffText    String   @map("diff_text") @db.Text
   verdictJson Json     @map("verdict_json")
   score       Float
+  confidencePct Int?   @map("confidence_pct")
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("submissions")

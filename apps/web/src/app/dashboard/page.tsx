@@ -78,10 +78,12 @@ function StatCard({
 function SubmissionRow({
   id,
   score,
+  confidencePct,
   index,
 }: {
   id: string;
   score: number;
+  confidencePct?: number | null;
   index: number;
 }) {
   const reduce = useReducedMotion();
@@ -93,8 +95,105 @@ function SubmissionRow({
       transition={{ duration: 0.2, delay: index * 0.05 }}
       className="flex items-center justify-between p-3 rounded border border-border bg-surface-2 text-xs font-mono"
     >
-      <span>Submission #{id.slice(-6)}</span>
+      <div className="flex items-center gap-2">
+        <span>Submission #{id.slice(-6)}</span>
+        {typeof confidencePct === "number" && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface border border-border text-text-secondary font-mono">
+            {confidencePct}% confident
+          </span>
+        )}
+      </div>
       <span className="font-semibold text-pass">Score: {score}/100</span>
+    </motion.div>
+  );
+}
+
+// ── Derived calibration gap stat card ──────────────────────────────────────
+
+function CalibrationStatCard({
+  sessions,
+  delay = 0.24,
+}: {
+  sessions: Session[];
+  delay?: number;
+}) {
+  const reduce = useReducedMotion();
+
+  const ratedSubmissions = sessions
+    .flatMap((s) => s.submissions ?? [])
+    .filter((sub) => typeof sub.confidencePct === "number" && !isNaN(sub.confidencePct));
+
+  if (ratedSubmissions.length === 0) {
+    return (
+      <motion.div
+        initial={reduce ? false : { opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, delay }}
+        className="bg-surface rounded-lg border border-border p-4 flex flex-col justify-between gap-1"
+      >
+        <span className="text-2xl font-bold font-mono text-text-secondary">—</span>
+        <div>
+          <span className="text-xs text-text-secondary font-mono block">Calibration gap</span>
+          <span className="text-[10px] text-text-secondary/70 font-mono">No ratings yet</span>
+        </div>
+      </motion.div>
+    );
+  }
+
+  // Calculate real average gap = (predicted confidence % - actual score %)
+  // Positive gap = Overconfident (predicted higher than actual)
+  // Negative gap = Underconfident (predicted lower than actual)
+  // Close to 0 (within ±5%) = Well-calibrated
+  const totalGap = ratedSubmissions.reduce(
+    (sum, sub) => sum + (sub.confidencePct! - sub.score),
+    0
+  );
+  const avgGap = Math.round(totalGap / ratedSubmissions.length);
+
+  const status: "overconfident" | "underconfident" | "well-calibrated" =
+    avgGap > 5 ? "overconfident" : avgGap < -5 ? "underconfident" : "well-calibrated";
+
+  const statusBadge = {
+    overconfident: {
+      label: "Overconfident",
+      color: "text-warning bg-warning-soft border-warning/30",
+    },
+    underconfident: {
+      label: "Underconfident",
+      color: "text-accent bg-accent-soft border-accent/30",
+    },
+    "well-calibrated": {
+      label: "Well-calibrated",
+      color: "text-pass bg-pass-soft border-pass/30",
+    },
+  }[status];
+
+  return (
+    <motion.div
+      initial={reduce ? false : { opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, delay }}
+      className="bg-surface rounded-lg border border-border p-4 flex flex-col justify-between gap-1"
+    >
+      <div className="flex items-baseline justify-between">
+        <span className="text-2xl font-bold font-mono text-text">
+          {avgGap > 0 ? `+${avgGap}%` : `${avgGap}%`}
+        </span>
+        <span
+          className={cn(
+            "px-1.5 py-0.5 rounded text-[10px] font-mono uppercase font-semibold border",
+            statusBadge.color,
+          )}
+        >
+          {statusBadge.label}
+        </span>
+      </div>
+      <div>
+        <span className="text-xs text-text-secondary font-mono block">Calibration gap</span>
+        <span className="text-[10px] text-text-secondary font-mono">
+          {ratedSubmissions.length} rated submission{ratedSubmissions.length !== 1 ? "s" : ""}
+        </span>
+      </div>
     </motion.div>
   );
 }
@@ -240,7 +339,7 @@ export default function CandidateDashboardPage() {
 
       {/* ── Stat strip — only once real data arrives ── */}
       {!isLoadingSessions && authed && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <StatCard label="Total sessions" value={sessions.length} delay={0} />
           <StatCard label="Total submissions" value={submissionsCount} delay={0.06} />
           <StatCard
@@ -248,10 +347,11 @@ export default function CandidateDashboardPage() {
             value={sessions.filter((s) => s.status === "ACTIVE").length}
             delay={0.12}
           />
+          <CalibrationStatCard sessions={sessions} delay={0.18} />
           <StatCard
             label="Problems available"
             value={problems.length}
-            delay={0.18}
+            delay={0.24}
           />
         </div>
       )}
@@ -336,7 +436,13 @@ export default function CandidateDashboardPage() {
               <div className="space-y-2">
                 <AnimatePresence initial={false}>
                   {sessions.flatMap((s) => s.submissions ?? []).map((sub, idx) => (
-                    <SubmissionRow key={sub.id} id={sub.id} score={sub.score} index={idx} />
+                    <SubmissionRow
+                      key={sub.id}
+                      id={sub.id}
+                      score={sub.score}
+                      confidencePct={sub.confidencePct}
+                      index={idx}
+                    />
                   ))}
                 </AnimatePresence>
               </div>

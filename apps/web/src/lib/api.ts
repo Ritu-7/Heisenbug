@@ -67,6 +67,7 @@ export interface Submission {
   diffText: string;
   verdictJson: unknown;
   score: number;
+  confidencePct?: number | null;
   createdAt: string;
 }
 
@@ -316,9 +317,10 @@ export async function runSession(sessionId: string): Promise<RunResult> {
 }
 
 /** POST /api/sessions/:id/submit — runs full test suite (visible + hidden) inside grader Docker */
-export async function submitSession(sessionId: string): Promise<SubmitResult> {
+export async function submitSession(sessionId: string, confidencePct?: number | null): Promise<SubmitResult> {
   const data = await apiFetch<{ ok: boolean; data: SubmitResult }>(`/api/sessions/${sessionId}/submit`, {
     method: "POST",
+    body: JSON.stringify(confidencePct !== undefined ? { confidencePct } : {}),
   });
   return data.data;
 }
