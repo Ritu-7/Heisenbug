@@ -30,7 +30,7 @@ export function Nav() {
   };
 
   const links = [
-    { href: "/", label: "Catalogue" },
+    { href: "/problems", label: "Catalogue" },
     { href: "/dashboard", label: "My Progress" },
     ...(isRecruiter ? [{ href: "/recruiter/dashboard", label: "Recruiter" }] : []),
     ...(isAdmin ? [{ href: "/admin/problems", label: "Admin" }] : []),

@@ -779,7 +779,7 @@ function WorkspaceContent({ slug }: { slug: string }) {
   if (problemError || !problem) return (
     <div className="flex h-[calc(100vh-56px)] flex-col items-center justify-center gap-4">
       <p className="text-sm text-fail">Problem not found or not yet published.</p>
-      <Link href="/" className="text-xs text-accent hover:underline font-mono">← Back to catalogue</Link>
+      <Link href="/problems" className="text-xs text-accent hover:underline font-mono">← Back to catalogue</Link>
     </div>
   );
 
@@ -803,7 +803,7 @@ function WorkspaceContent({ slug }: { slug: string }) {
       {/* ── Header ── */}
       <div className="flex items-center justify-between px-4 py-2.5 bg-surface border-b border-border shrink-0">
         <div className="flex items-center gap-3 min-w-0">
-          <Link href="/" className="text-text-secondary hover:text-text transition-colors text-xs font-mono">← catalogue</Link>
+          <Link href="/problems" className="text-text-secondary hover:text-text transition-colors text-xs font-mono">← catalogue</Link>
           <span className="text-border">│</span>
           <h1 className="text-sm font-semibold text-text truncate">{problem.title}</h1>
           <div className="hidden sm:flex items-center gap-1.5">

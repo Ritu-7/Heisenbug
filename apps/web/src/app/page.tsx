@@ -1,327 +1,440 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { useState, useMemo } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { fetchProblems, type Problem } from "@/lib/api";
-import { DifficultyBadge, SkillBadge, TrackBadge } from "@/components/badge";
+import { motion, useReducedMotion } from "framer-motion";
+import { CodeEditor } from "@/components/code-editor";
 import { cn } from "@/lib/utils";
 
-// ── Filter state types ─────────────────────────────────────────────────────
+// ── Real starter code snippet from be-idempotency-001 (PAY-482) ────────────
+const SAMPLE_CODE = `// src/charge.js — Checkout payment processing
+// PAY-482: Fix double-charges on client retry
 
-type DifficultyFilter = "all" | "easy" | "medium" | "hard";
-type StatusFilter = "all" | "not_started";
+'use strict';
 
-// ── Sub-components ─────────────────────────────────────────────────────────
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const { db } = require('./db/client');
 
-function LoadingSkeleton() {
-  return (
-    <div className="animate-pulse space-y-3" aria-label="Loading problems">
-      {[1, 2, 3].map((i) => (
-        <div key={i} className="h-16 rounded-lg bg-surface-2 border border-border" />
-      ))}
-    </div>
-  );
-}
+async function handleCheckout(req, res) {
+  const { cartId, amount, currency = 'usd', customerId } = req.body;
 
-function ErrorBanner({ message }: { message: string }) {
-  return (
-    <div
-      role="alert"
-      className="rounded-lg border border-fail/40 bg-fail-soft px-4 py-3 text-sm text-fail font-mono"
-    >
-      <span className="font-semibold">Could not load problems:</span> {message}
-      <p className="mt-1 text-xs text-fail/80 font-sans">
-        Make sure the API server is running on{" "}
-        <code className="font-mono">{process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"}</code>
-        .
-      </p>
-    </div>
-  );
-}
+  // TODO R1: Read & validate Idempotency-Key header
+  const idempotencyKey = req.headers['idempotency-key'];
+  if (!idempotencyKey) {
+    return res.status(400).json({ error: 'Idempotency-Key header is required' });
+  }
 
-function EmptyState({ filtered }: { filtered: boolean }) {
-  const reduce = useReducedMotion();
-  return (
-    <motion.div
-      initial={reduce ? false : { opacity: 0, scale: 0.98 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.98 }}
-      transition={{ duration: 0.2 }}
-      className="py-16 text-center text-text-secondary"
-    >
-      {filtered ? (
-        <>
-          <p className="text-sm font-medium text-text">No problems match these filters.</p>
-          <p className="mt-1 text-xs text-text-secondary">Try clearing a filter above.</p>
-        </>
-      ) : (
-        <p className="text-sm font-medium text-text">No problems in the database yet.</p>
-      )}
-    </motion.div>
-  );
-}
+  // TODO R2: Check if key was already processed (replay check)
+  const existing = await db.idempotencyKey.findUnique({ where: { key: idempotencyKey } });
+  if (existing?.responseBody) {
+    return res.status(200).json(JSON.parse(existing.responseBody));
+  }
 
-function StatusChip() {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-text-secondary font-mono">
-      <span className="h-1.5 w-1.5 rounded-full bg-text-secondary/50" />
-      Not started
-    </span>
-  );
-}
+  // TODO R3: Atomic lock via DB unique constraint
+  // ...
+}`;
 
-// ── Problem row ────────────────────────────────────────────────────────────
-function ProblemRow({ problem, index }: { problem: Problem; index: number }) {
+export default function LandingPage() {
   const reduce = useReducedMotion();
 
-  return (
-    <motion.div
-      layout
-      initial={reduce ? false : { opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.98 }}
-      transition={{
-        duration: 0.2,
-        delay: Math.min(index * 0.04, 0.2), // cap delay so long lists don't take forever
-        layout: { duration: 0.2 },
-      }}
-    >
-      <Link
-        href={`/problems/${problem.slug}`}
-        className={cn(
-          "group flex items-center gap-4 px-4 py-3.5",
-          "rounded-lg border border-border bg-surface",
-          "hover:border-accent/40 hover:bg-accent-soft/30 transition-colors duration-150",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-        )}
-      >
-        {/* Title + track */}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-text group-hover:text-accent transition-colors">
-            {problem.title}
-          </p>
-          <div className="mt-1 flex items-center gap-2">
-            <TrackBadge track={problem.track} />
-            <span className="text-xs text-text-secondary font-mono">{problem.stack}</span>
-          </div>
-        </div>
+  // ── Typing / Live Code Effect ────────────────────────────────────────────
+  // Slowly types out the comment line to give subtle liveliness to the editor
+  const [typedCode, setTypedCode] = useState(SAMPLE_CODE);
+  const [isTypingActive, setIsTypingActive] = useState(!reduce);
 
-        {/* Skills */}
-        <div className="hidden sm:flex flex-wrap gap-1 max-w-[220px]">
-          {problem.skills.map((skill) => (
-            <SkillBadge key={skill} skill={skill} />
-          ))}
-        </div>
+  useEffect(() => {
+    if (reduce) {
+      setTypedCode(SAMPLE_CODE);
+      return;
+    }
 
-        {/* Difficulty */}
-        <div className="w-20 text-right">
-          <DifficultyBadge difficulty={problem.difficulty} />
-        </div>
+    let isMounted = true;
+    let timeoutId: NodeJS.Timeout;
 
-        {/* Est. time */}
-        <div className="w-20 text-right text-xs text-text-secondary font-mono tabular-nums hidden md:block">
-          {problem.estMinutes} min
-        </div>
+    // Subtle typing simulator that appends a code comment, pauses, resets
+    const baseCode = SAMPLE_CODE;
+    const additionalLines = [
+      "\n  // Acquiring idempotency lock in PostgreSQL...",
+      "\n  await db.idempotencyKey.create({ data: { key: idempotencyKey, status: 'IN_PROGRESS' } });",
+    ];
 
-        {/* Status */}
-        <div className="w-24 text-right">
-          <StatusChip />
-        </div>
-      </Link>
-    </motion.div>
-  );
-}
+    let lineIndex = 0;
+    let charIndex = 0;
 
-// ── Filter bar ─────────────────────────────────────────────────────────────
-interface FilterBarProps {
-  problems: Problem[];
-  difficulty: DifficultyFilter;
-  setDifficulty: (v: DifficultyFilter) => void;
-  track: string;
-  setTrack: (v: string) => void;
-  skill: string;
-  setSkill: (v: string) => void;
-  status: StatusFilter;
-  setStatus: (v: StatusFilter) => void;
-}
+    const typeNextChar = () => {
+      if (!isMounted) return;
 
-function FilterBar({
-  problems,
-  difficulty, setDifficulty,
-  track, setTrack,
-  skill, setSkill,
-  status, setStatus,
-}: FilterBarProps) {
-  const tracks = useMemo(
-    () => ["all", ...Array.from(new Set(problems.map((p) => p.track))).sort()],
-    [problems],
-  );
-  const skills = useMemo(
-    () => ["all", ...Array.from(new Set(problems.flatMap((p) => p.skills))).sort()],
-    [problems],
-  );
+      if (lineIndex < additionalLines.length) {
+        const currentLine = additionalLines[lineIndex];
+        if (charIndex < currentLine.length) {
+          setTypedCode(baseCode + additionalLines.slice(0, lineIndex).join("") + currentLine.slice(0, charIndex + 1));
+          charIndex++;
+          timeoutId = setTimeout(typeNextChar, 45);
+        } else {
+          lineIndex++;
+          charIndex = 0;
+          timeoutId = setTimeout(typeNextChar, 600);
+        }
+      } else {
+        // Pause when done, then reset
+        timeoutId = setTimeout(() => {
+          if (!isMounted) return;
+          setTypedCode(baseCode);
+          lineIndex = 0;
+          charIndex = 0;
+          timeoutId = setTimeout(typeNextChar, 1200);
+        }, 4000);
+      }
+    };
 
-  const selectClass =
-    "h-8 rounded-md border border-border bg-surface px-2.5 text-xs text-text-secondary font-mono " +
-    "focus:outline-none focus:ring-1 focus:ring-accent focus:border-accent transition-colors";
+    timeoutId = setTimeout(typeNextChar, 1500);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
+  }, [reduce]);
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs text-text-secondary font-medium mr-1">Filter:</span>
-
-      <select
-        value={track}
-        onChange={(e) => setTrack(e.target.value)}
-        aria-label="Filter by track"
-        className={selectClass}
-      >
-        {tracks.map((t) => (
-          <option key={t} value={t}>
-            {t === "all" ? "All tracks" : t}
-          </option>
-        ))}
-      </select>
-
-      <select
-        value={difficulty}
-        onChange={(e) => setDifficulty(e.target.value as DifficultyFilter)}
-        aria-label="Filter by difficulty"
-        className={selectClass}
-      >
-        <option value="all">All difficulties</option>
-        <option value="easy">Easy</option>
-        <option value="medium">Medium</option>
-        <option value="hard">Hard</option>
-      </select>
-
-      <select
-        value={skill}
-        onChange={(e) => setSkill(e.target.value)}
-        aria-label="Filter by skill"
-        className={selectClass}
-      >
-        {skills.map((s) => (
-          <option key={s} value={s}>
-            {s === "all" ? "All skills" : s}
-          </option>
-        ))}
-      </select>
-
-      <select
-        value={status}
-        onChange={(e) => setStatus(e.target.value as StatusFilter)}
-        aria-label="Filter by status"
-        className={selectClass}
-      >
-        <option value="all">All statuses</option>
-        <option value="not_started">Not started</option>
-      </select>
-    </div>
-  );
-}
-
-// ── Main page ──────────────────────────────────────────────────────────────
-
-export default function ProblemsPage() {
-  const reduce = useReducedMotion();
-  const { data: problems = [], isLoading, isError, error } = useQuery({
-    queryKey: ["problems"],
-    queryFn: fetchProblems,
-  });
-
-  const [difficulty, setDifficulty] = useState<DifficultyFilter>("all");
-  const [track, setTrack] = useState<string>("all");
-  const [skill, setSkill] = useState<string>("all");
-  const [status, setStatus] = useState<StatusFilter>("all");
-
-  const filtered = useMemo(() => {
-    return problems.filter((p) => {
-      if (difficulty !== "all" && p.difficulty !== difficulty) return false;
-      if (track !== "all" && p.track !== track) return false;
-      if (skill !== "all" && !p.skills.includes(skill)) return false;
-      if (status === "not_started") return true;
-      return true;
-    });
-  }, [problems, difficulty, track, skill, status]);
-
-  const hasActiveFilter =
-    difficulty !== "all" || track !== "all" || skill !== "all" || status !== "all";
-
-  return (
-    <div className="mx-auto max-w-5xl px-4 py-10">
-      {/* ── Header ── */}
-      <motion.div
-        initial={reduce ? false : { opacity: 0, y: -8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.22 }}
-        className="mb-8"
-      >
-        <h1 className="font-serif text-3xl font-semibold text-text tracking-tight">
-          Problem Catalogue
-        </h1>
-        <p className="mt-2 text-sm text-text-secondary">
-          Pick a ticket, fix the bug. Every problem is sourced from a real Postgres instance.
-        </p>
-      </motion.div>
-
-      {/* ── Filters ── */}
-      {!isLoading && !isError && (
+    <div className="w-full min-h-[calc(100vh-56px)] flex flex-col justify-between overflow-x-hidden selection:bg-accent selection:text-white">
+      {/* ── SECTION 1: HERO ── */}
+      <section className="relative px-4 pt-16 pb-20 md:pt-24 md:pb-28 max-w-6xl mx-auto w-full text-center space-y-8">
+        {/* Live Badge */}
         <motion.div
-          initial={reduce ? false : { opacity: 0, y: 6 }}
+          initial={reduce ? false : { opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2 }}
-          className="mb-5"
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-border bg-surface text-xs font-mono text-text-secondary"
         >
-          <FilterBar
-            problems={problems}
-            difficulty={difficulty} setDifficulty={setDifficulty}
-            track={track} setTrack={setTrack}
-            skill={skill} setSkill={setSkill}
-            status={status} setStatus={setStatus}
-          />
+          <span className="h-2 w-2 rounded-full bg-pass animate-pulse" />
+          <span>4 real problem environments · Hidden test suites live in Docker</span>
         </motion.div>
-      )}
 
-      {/* ── Results header ── */}
-      {!isLoading && !isError && (
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-xs text-text-secondary font-mono">
-            {filtered.length} problem{filtered.length !== 1 ? "s" : ""}
-            {hasActiveFilter ? " (filtered)" : ""}
-          </p>
-          <div className="hidden md:flex items-center gap-4 text-xs text-text-secondary font-medium pr-1">
-            <span className="w-20 text-right">Difficulty</span>
-            <span className="w-20 text-right">Est. time</span>
-            <span className="w-24 text-right">Status</span>
+        {/* Headline */}
+        <div className="space-y-4 max-w-3xl mx-auto">
+          <motion.h1
+            initial={reduce ? false : { opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, delay: 0.05 }}
+            className="text-4xl sm:text-5xl md:text-6xl font-serif font-bold tracking-tight text-text leading-[1.12]"
+          >
+            The bug only shows up when someone&apos;s watching.
+          </motion.h1>
+
+          <motion.p
+            initial={reduce ? false : { opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, delay: 0.1 }}
+            className="text-base sm:text-lg text-text-secondary max-w-2xl mx-auto leading-relaxed"
+          >
+            Fix real tickets. Graded by hidden tests in isolated containers.
+            Realistic debugging assessments without trivia or artificial puzzles.
+          </motion.p>
+        </div>
+
+        {/* CTAs */}
+        <motion.div
+          initial={reduce ? false : { opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, delay: 0.15 }}
+          className="flex flex-wrap items-center justify-center gap-4 pt-2"
+        >
+          <Link
+            href="/problems"
+            className="px-6 py-3 rounded-lg text-sm font-semibold font-mono bg-accent text-white hover:bg-accent/90 transition-colors shadow-sm"
+          >
+            Try a free problem →
+          </Link>
+          <Link
+            href="/recruiter/dashboard"
+            className="px-6 py-3 rounded-lg text-sm font-semibold font-mono bg-surface-2 text-text border border-border hover:bg-surface hover:border-accent/40 transition-colors"
+          >
+            For recruiters
+          </Link>
+        </motion.div>
+
+        {/* ── EMBEDDED WORKSPACE PREVIEW ── */}
+        <motion.div
+          initial={reduce ? false : { opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.25 }}
+          className="pt-6 max-w-5xl mx-auto text-left"
+        >
+          <div className="rounded-xl border border-border bg-surface shadow-2xl overflow-hidden">
+            {/* Window Chrome */}
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border bg-surface-2/70 text-xs font-mono text-text-secondary">
+              <div className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-fail/60" />
+                <span className="h-2.5 w-2.5 rounded-full bg-warning/60" />
+                <span className="h-2.5 w-2.5 rounded-full bg-pass/60" />
+                <span className="ml-2 text-[11px] text-text-secondary">PAY-482 — Checkout Idempotency</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-[11px] px-2 py-0.5 rounded bg-surface border border-border">Backend · Node.js</span>
+                <span className="text-pass text-[11px]">Docker Ready</span>
+              </div>
+            </div>
+
+            {/* Split layout: Ticket Details (left) & Live Monaco Code Editor (right) */}
+            <div className="grid grid-cols-1 md:grid-cols-12 min-h-[380px]">
+              {/* Ticket description & checks panel */}
+              <div className="md:col-span-5 p-5 border-b md:border-b-0 md:border-r border-border bg-surface/50 space-y-4">
+                <div className="space-y-1">
+                  <span className="text-[10px] uppercase font-mono tracking-wider text-text-secondary font-semibold">
+                    Customer Issue PAY-482
+                  </span>
+                  <h3 className="text-sm font-semibold text-text">
+                    Checkout double-charges on client retry
+                  </h3>
+                  <p className="text-xs text-text-secondary leading-relaxed pt-1">
+                    When network timeouts occur during checkout, client retries create duplicate PaymentIntents in Stripe. Implement atomic idempotency tracking.
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-border space-y-2">
+                  <span className="text-[10px] uppercase font-mono tracking-wider text-text-secondary font-semibold">
+                    Grading Pipeline (Visible & Hidden)
+                  </span>
+                  <div className="space-y-1.5 font-mono text-[11px]">
+                    <div className="flex items-center gap-2 text-pass">
+                      <span>✓</span>
+                      <span>[V2:20] Returns 201 on initial checkout</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-fail">
+                      <span>✗</span>
+                      <span>[V1:10] Returns 400 if Idempotency-Key header missing</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-fail">
+                      <span>✗</span>
+                      <span>[V3:30] Returns 200 on duplicate replay; Stripe called once</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-text-secondary/70">
+                      <span>🔒</span>
+                      <span>[H1-H3:40] Hidden concurrency & crash recovery tests</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Real Code Editor panel */}
+              <div className="md:col-span-7 flex flex-col bg-[#1e1e1e] min-h-[380px]">
+                <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-[#252526] text-[11px] font-mono text-white/80">
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-amber-400">JS</span> src/charge.js
+                  </span>
+                  <span className="text-white/40 text-[10px]">Read-only preview</span>
+                </div>
+                <div className="flex-1 relative min-h-[340px]">
+                  <CodeEditor
+                    value={typedCode}
+                    onChange={() => {}}
+                    language="javascript"
+                    filename="charge.js"
+                    readOnly={true}
+                    height="100%"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </section>
+
+      {/* ── SECTION 2: HOW IT WORKS ── */}
+      <section className="border-t border-border bg-surface-2/40 py-20 px-4">
+        <div className="max-w-5xl mx-auto space-y-12">
+          <motion.div
+            initial={reduce ? false : { opacity: 0, y: 16 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-80px" }}
+            transition={{ duration: 0.25 }}
+            className="text-center space-y-2"
+          >
+            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-text">
+              How Heisenbug Works
+            </h2>
+            <p className="text-sm text-text-secondary max-w-xl mx-auto">
+              Real problem environments, real tests, and reproducible developer evaluations.
+            </p>
+          </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              {
+                step: "01",
+                title: "Pick a Ticket",
+                description:
+                  "Start a session on realistic bugs: concurrency race conditions, payment idempotency, SQL n+1 performance, or XSS vulnerabilities.",
+              },
+              {
+                step: "02",
+                title: "Fix It in the Sandbox",
+                description:
+                  "Write code in the browser with full Monaco editor capabilities. Run visible unit tests on demand to verify your hypothesis.",
+              },
+              {
+                step: "03",
+                title: "Graded by Hidden Tests",
+                description:
+                  "Submit to an isolated Docker container with host-mounted hidden edge cases. Get deterministic scoring, diff inspection, and session replays.",
+              },
+            ].map((item, idx) => (
+              <motion.div
+                key={item.step}
+                initial={reduce ? false : { opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-60px" }}
+                transition={{ duration: 0.22, delay: idx * 0.08 }}
+                className="rounded-xl border border-border bg-surface p-6 space-y-3 relative overflow-hidden"
+              >
+                <span className="text-2xl font-mono font-bold text-accent/80">
+                  {item.step}
+                </span>
+                <h3 className="text-base font-semibold text-text">{item.title}</h3>
+                <p className="text-xs text-text-secondary leading-relaxed">
+                  {item.description}
+                </p>
+              </motion.div>
+            ))}
           </div>
         </div>
-      )}
+      </section>
 
-      {/* ── Content ── */}
-      {isLoading && <LoadingSkeleton />}
-      {isError && <ErrorBanner message={(error as Error).message} />}
-      {!isLoading && !isError && (
-        <motion.div layout className="space-y-2">
-          <AnimatePresence mode="popLayout" initial={false}>
-            {filtered.length === 0 ? (
-              <EmptyState key="empty" filtered={hasActiveFilter} />
-            ) : (
-              filtered.map((problem, index) => (
-                <ProblemRow key={problem.id} problem={problem} index={index} />
-              ))
-            )}
-          </AnimatePresence>
+      {/* ── SECTION 3: FEATURES (HONEST TO THE PLATFORM) ── */}
+      <section className="py-20 px-4 max-w-6xl mx-auto w-full space-y-12">
+        <motion.div
+          initial={reduce ? false : { opacity: 0, y: 16 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-80px" }}
+          transition={{ duration: 0.25 }}
+          className="text-center space-y-2"
+        >
+          <h2 className="text-2xl sm:text-3xl font-serif font-bold text-text">
+            Engineered for Realistic Evaluation
+          </h2>
+          <p className="text-sm text-text-secondary max-w-xl mx-auto">
+            Built from scratch to measure real engineering ability rather than algorithmic memorization.
+          </p>
         </motion.div>
-      )}
 
-      {/* ── Footer note ── */}
-      {!isLoading && !isError && (
-        <p className="mt-8 text-center text-xs text-text-secondary/60 font-mono">
-          Showing all {problems.length} problem{problems.length !== 1 ? "s" : ""} in the database.
-        </p>
-      )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {[
+            {
+              title: "Docker-Isolated Grading",
+              badge: "Container Sandbox",
+              description:
+                "Hidden tests live securely on the host and mount into an isolated Docker runner container. Test execution has no network access and strict CPU/memory limits.",
+            },
+            {
+              title: "4-Stage Problem Validation Pipeline",
+              badge: "Quality Guarantee",
+              description:
+                "Every problem pack passes a strict deterministic pipeline before publishing: starter code fails, reference solution scores 100/100, 5-run consistency check passes, and bad patches are rejected.",
+            },
+            {
+              title: "Candidate Session Replay & Process Analytics",
+              badge: "Full Observability",
+              description:
+                "Recruiters don't just see a final score. Step through a candidate's complete timeline: keystroke save history, time to first test run, hint usage penalties, and unified code diffs.",
+            },
+            {
+              title: "AI Mentor & Collaboration Scoring",
+              badge: "Modern AI Pairing",
+              description:
+                "Practice mode includes an AI Socratic mentor. Recruiters receive separate collaboration signals observing whether candidate verified AI suggestions before submitting.",
+            },
+          ].map((feature, idx) => (
+            <motion.div
+              key={feature.title}
+              initial={reduce ? false : { opacity: 0, y: 16 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-60px" }}
+              whileHover={{ y: -2 }}
+              transition={{ duration: 0.2, delay: idx * 0.05 }}
+              className="rounded-xl border border-border bg-surface p-6 space-y-3 hover:border-accent/40 transition-colors shadow-sm"
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-semibold text-text">{feature.title}</h3>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-border bg-surface-2 text-accent">
+                  {feature.badge}
+                </span>
+              </div>
+              <p className="text-xs text-text-secondary leading-relaxed">
+                {feature.description}
+              </p>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── SECTION 4: RECRUITER CTA BANNER ── */}
+      <section className="px-4 pb-20 max-w-5xl mx-auto w-full">
+        <motion.div
+          initial={reduce ? false : { opacity: 0, y: 16 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-60px" }}
+          transition={{ duration: 0.25 }}
+          className="rounded-2xl border border-border bg-gradient-to-br from-surface to-surface-2 p-8 sm:p-12 text-center space-y-6"
+        >
+          <div className="space-y-2 max-w-xl mx-auto">
+            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-text">
+              Assess candidates on how they actually build software.
+            </h2>
+            <p className="text-xs sm:text-sm text-text-secondary leading-relaxed">
+              Create timed assessments, send invitations, and inspect candidate problem-solving processes with real session event replays and Docker-backed grading.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-4">
+            <Link
+              href="/recruiter/dashboard"
+              className="px-6 py-3 rounded-lg text-xs font-mono font-semibold bg-accent text-white hover:bg-accent/90 transition-colors"
+            >
+              Open Recruiter Dashboard →
+            </Link>
+            <Link
+              href="/problems"
+              className="px-6 py-3 rounded-lg text-xs font-mono font-semibold bg-surface border border-border text-text hover:border-accent/40 transition-colors"
+            >
+              Browse Problems
+            </Link>
+          </div>
+        </motion.div>
+      </section>
+
+      {/* 
+        ========================================================================
+        NOTE ON DELIBERATE OMISSIONS:
+        4. COMPANY LOGOS / TRUSTED BY: Omitted because no external enterprise logos have been confirmed.
+        5. TESTIMONIALS: Omitted to prevent fabricating quotes or customer personas.
+        6. PRICING: Omitted because billing and payment processor (e.g., Stripe subscription)
+           is not currently integrated in this repo.
+        ========================================================================
+      */}
+
+      {/* ── SECTION 5: FOOTER ── */}
+      <footer className="border-t border-border bg-surface px-4 py-8 text-xs font-mono text-text-secondary">
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-accent inline-block" />
+            <span className="font-serif font-semibold text-text text-sm">Heisenbug</span>
+            <span>· Engineering Ticket Assessment Platform</span>
+          </div>
+
+          <div className="flex items-center gap-6">
+            <Link href="/problems" className="hover:text-text transition-colors">
+              Catalogue
+            </Link>
+            <Link href="/recruiter/dashboard" className="hover:text-text transition-colors">
+              Recruiter
+            </Link>
+            <Link href="/login" className="hover:text-text transition-colors">
+              Sign In
+            </Link>
+            <span className="text-text-secondary/50">v0.1.0</span>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

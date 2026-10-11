@@ -462,7 +462,7 @@ export default function CandidateDashboardPage() {
           <h2 id="recommended-heading" className="text-sm font-semibold uppercase tracking-wider text-text-secondary font-mono">
             Recommended Problems ({problems.length})
           </h2>
-          <Link href="/" className="text-xs text-accent font-mono hover:underline">
+          <Link href="/problems" className="text-xs text-accent font-mono hover:underline">
             View full catalogue →
           </Link>
         </div>
