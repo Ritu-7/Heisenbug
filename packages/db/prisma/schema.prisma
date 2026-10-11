@@ -18,6 +18,13 @@ enum Role {
   ADMIN
 }
 
+enum ApprovalStatus {
+  NONE
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum ProblemVersionStatus {
   DRAFT
   VALIDATING
@@ -37,14 +44,16 @@ enum SessionStatus {
 }
 
 model User {
-  id           String       @id @default(cuid())
-  email        String       @unique
-  name         String
-  role         Role
-  passwordHash String?      @map("password_hash")
-  createdAt    DateTime     @default(now()) @map("created_at")
-  sessions     Session[]
-  assessments  Assessment[] @relation("RecruiterAssessments")
+  id             String          @id @default(cuid())
+  email          String          @unique
+  name           String
+  role           Role            @default(CANDIDATE)
+  requestedRole  Role?           @map("requested_role")
+  approvalStatus ApprovalStatus  @default(NONE) @map("approval_status")
+  passwordHash   String?         @map("password_hash")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  sessions       Session[]
+  assessments    Assessment[]    @relation("RecruiterAssessments")
 
   @@map("users")
 }

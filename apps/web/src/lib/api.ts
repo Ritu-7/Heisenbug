@@ -33,12 +33,28 @@ export interface User {
   email: string;
   name: string;
   role: "CANDIDATE" | "RECRUITER" | "AUTHOR" | "ADMIN";
+  requestedRole?: "RECRUITER" | null;
+  approvalStatus?: "NONE" | "PENDING" | "APPROVED" | "REJECTED";
 }
 
 export interface LoginResponse {
   ok: boolean;
   token: string;
   user: User;
+  message?: string;
+}
+
+export interface RegisterParams {
+  email: string;
+  password: string;
+  name: string;
+  role?: "CANDIDATE" | "RECRUITER";
+}
+
+export interface GoogleAuthConfig {
+  ok: boolean;
+  configured: boolean;
+  redirectUri: string;
 }
 
 export interface ProblemVersionSummary {
@@ -157,6 +173,23 @@ async function apiFetch<T>(
 
 // ── Query functions (used by TanStack Query) ───────────────────────────────
 
+/** Register a new user */
+export async function registerUser(params: RegisterParams): Promise<LoginResponse> {
+  const res = await apiFetch<LoginResponse>("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+  if (res.token) {
+    setAuthToken(res.token);
+  }
+  return res;
+}
+
+/** Check if Google OAuth is configured */
+export async function fetchGoogleAuthConfig(): Promise<GoogleAuthConfig> {
+  return apiFetch<GoogleAuthConfig>("/api/auth/google/config");
+}
+
 /** Login with email & password */
 export async function loginUser(email: string, password: string): Promise<LoginResponse> {
   const res = await apiFetch<LoginResponse>("/api/auth/login", {
@@ -174,13 +207,8 @@ export async function fetchCurrentUser(): Promise<User | null> {
   const token = getAuthToken();
   if (!token) return null;
   try {
-    const res = await apiFetch<{ ok: boolean; user: { sub: string; email: string; role: User["role"] } }>("/api/auth/me");
-    return {
-      id: res.user.sub,
-      email: res.user.email,
-      name: res.user.email.split("@")[0],
-      role: res.user.role,
-    };
+    const res = await apiFetch<{ ok: boolean; user: User }>("/api/auth/me");
+    return res.user;
   } catch {
     removeAuthToken();
     return null;
