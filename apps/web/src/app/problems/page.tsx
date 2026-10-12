@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { fetchProblems, type Problem } from "@/lib/api";
 import { DifficultyBadge, SkillBadge, TrackBadge } from "@/components/badge";
@@ -17,9 +17,9 @@ type StatusFilter = "all" | "not_started";
 
 function LoadingSkeleton() {
   return (
-    <div className="animate-pulse space-y-3" aria-label="Loading problems">
+    <div className="animate-pulse space-y-2.5" aria-label="Loading problems">
       {[1, 2, 3].map((i) => (
-        <div key={i} className="h-16 rounded-lg bg-surface-2 border border-border" />
+        <div key={i} className="h-[72px] rounded-lg bg-surface-2 border border-border" />
       ))}
     </div>
   );
@@ -63,35 +63,72 @@ function EmptyState({ filtered }: { filtered: boolean }) {
   );
 }
 
-function StatusChip() {
+// ── Check dots ─────────────────────────────────────────────────────────────
+/**
+ * Small rounded-square dots representing total check count (visible + hidden).
+ * Filled = checks exist. Not a pass/fail indicator — honest to guests.
+ */
+function CheckDots({ count }: { count: number }) {
+  if (count <= 0) return null;
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-text-secondary font-mono">
-      <span className="h-1.5 w-1.5 rounded-full bg-text-secondary/50" />
-      Not started
-    </span>
+    <div
+      className="flex items-center gap-[3px]"
+      title={`${count} checks (visible + hidden)`}
+      aria-label={`${count} checks`}
+    >
+      {Array.from({ length: count }).map((_, i) => (
+        <span
+          key={i}
+          className="h-[5px] w-[5px] rounded-[1px] bg-text-secondary/35 flex-none"
+        />
+      ))}
+    </div>
   );
 }
 
-// ── Problem row ────────────────────────────────────────────────────────────
-function ProblemRow({ problem, index }: { problem: Problem; index: number }) {
+// ── Problem row ─────────────────────────────────────────────────────────────
+interface ProblemRowProps {
+  problem: Problem;
+  index: number;
+  initialLoad: boolean;
+}
+
+function ProblemRow({ problem, index, initialLoad }: ProblemRowProps) {
   const reduce = useReducedMotion();
+
+  const rowInitial = reduce || !initialLoad
+    ? false
+    : { opacity: 0, x: -10 };
+
+  const delayMs = initialLoad ? Math.min(index * 55, 330) : 0;
 
   return (
     <motion.div
       layout
-      initial={reduce ? false : { opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={rowInitial}
+      animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, scale: 0.98 }}
       transition={{
-        duration: 0.2,
-        delay: Math.min(index * 0.04, 0.2),
-        layout: { duration: 0.2 },
+        duration: 0.22,
+        delay: delayMs / 1000,
+        layout: { duration: 0.18 },
       }}
+      className="relative group/row"
     >
+      {/* Diff-gutter accent bar */}
+      <span
+        className={cn(
+          "absolute left-0 top-[6px] bottom-[6px] rounded-full transition-[width] duration-150",
+          "w-[3px] group-hover/row:w-[5px]",
+          "bg-accent", // not-started color — all problems in catalogue are not-started for a guest
+        )}
+        aria-hidden="true"
+      />
+
       <Link
         href={`/problems/${problem.slug}`}
         className={cn(
-          "group flex items-center gap-4 px-4 py-3.5",
+          "flex items-center gap-4 pl-5 pr-4 py-3.5",
           "rounded-lg border border-border bg-surface",
           "hover:border-accent/40 hover:bg-accent-soft/30 transition-colors duration-150",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
@@ -99,25 +136,26 @@ function ProblemRow({ problem, index }: { problem: Problem; index: number }) {
       >
         {/* Title + track */}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-text group-hover:text-accent transition-colors">
+          <p className="truncate text-sm font-medium text-text group-hover/row:text-accent transition-colors">
             {problem.title}
           </p>
-          <div className="mt-1 flex items-center gap-2">
+          <div className="mt-1.5 flex items-center gap-2">
             <TrackBadge track={problem.track} />
             <span className="text-xs text-text-secondary font-mono">{problem.stack}</span>
           </div>
         </div>
 
         {/* Skills */}
-        <div className="hidden sm:flex flex-wrap gap-1 max-w-[220px]">
+        <div className="hidden sm:flex flex-wrap gap-1 max-w-[200px]">
           {problem.skills.map((skill) => (
             <SkillBadge key={skill} skill={skill} />
           ))}
         </div>
 
-        {/* Difficulty */}
-        <div className="w-20 text-right">
+        {/* Difficulty + check dots */}
+        <div className="flex flex-col items-end gap-1.5 w-20">
           <DifficultyBadge difficulty={problem.difficulty} />
+          <CheckDots count={problem.checkCount} />
         </div>
 
         {/* Est. time */}
@@ -127,14 +165,38 @@ function ProblemRow({ problem, index }: { problem: Problem; index: number }) {
 
         {/* Status */}
         <div className="w-24 text-right">
-          <StatusChip />
+          <span className="inline-flex items-center gap-1.5 text-xs text-text-secondary font-mono">
+            <span className="h-1.5 w-1.5 rounded-full bg-text-secondary/50" />
+            Not started
+          </span>
         </div>
       </Link>
     </motion.div>
   );
 }
 
-// ── Filter bar ─────────────────────────────────────────────────────────────
+// ── Hero stat line ─────────────────────────────────────────────────────────
+function HeroStatLine({ problems }: { problems: Problem[] }) {
+  const tracks = useMemo(
+    () => Array.from(new Set(problems.map((p) => p.track))).sort(),
+    [problems],
+  );
+
+  if (problems.length === 0) return null;
+
+  return (
+    <p className="mt-2 text-xs text-text-secondary font-mono leading-relaxed">
+      <span className="text-text font-medium">{problems.length}</span>{" "}
+      real problem{problems.length !== 1 ? "s" : ""}{" · "}
+      <span className="text-text font-medium">{tracks.length}</span>{" "}
+      track{tracks.length !== 1 ? "s" : ""}{" — "}
+      {tracks.join(", ")}{" · "}
+      hidden tvalues never reach the candidate container
+    </p>
+  );
+}
+
+// ── Filter rail ────────────────────────────────────────────────────────────
 interface FilterBarProps {
   problems: Problem[];
   difficulty: DifficultyFilter;
@@ -154,12 +216,40 @@ function FilterBar({
   skill, setSkill,
   status, setStatus,
 }: FilterBarProps) {
+  // Derive real counts per option from the full fetched dataset
+  const trackCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const p of problems) {
+      map[p.track] = (map[p.track] ?? 0) + 1;
+    }
+    return map;
+  }, [problems]);
+
+  const diffCounts = useMemo(() => {
+    const map: Record<string, number> = { easy: 0, medium: 0, hard: 0 };
+    for (const p of problems) {
+      if (p.difficulty in map) map[p.difficulty]++;
+    }
+    return map;
+  }, [problems]);
+
+  const skillCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const p of problems) {
+      for (const s of p.skills) {
+        map[s] = (map[s] ?? 0) + 1;
+      }
+    }
+    return map;
+  }, [problems]);
+
   const tracks = useMemo(
-    () => ["all", ...Array.from(new Set(problems.map((p) => p.track))).sort()],
+    () => Array.from(new Set(problems.map((p) => p.track))).sort(),
     [problems],
   );
+
   const skills = useMemo(
-    () => ["all", ...Array.from(new Set(problems.flatMap((p) => p.skills))).sort()],
+    () => Array.from(new Set(problems.flatMap((p) => p.skills))).sort(),
     [problems],
   );
 
@@ -171,44 +261,50 @@ function FilterBar({
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-xs text-text-secondary font-medium mr-1">Filter:</span>
 
+      {/* Track filter with real counts */}
       <select
         value={track}
         onChange={(e) => setTrack(e.target.value)}
         aria-label="Filter by track"
         className={selectClass}
       >
+        <option value="all">All tracks ({problems.length})</option>
         {tracks.map((t) => (
           <option key={t} value={t}>
-            {t === "all" ? "All tracks" : t}
+            {t} ({trackCounts[t] ?? 0})
           </option>
         ))}
       </select>
 
+      {/* Difficulty filter with real counts */}
       <select
         value={difficulty}
         onChange={(e) => setDifficulty(e.target.value as DifficultyFilter)}
         aria-label="Filter by difficulty"
         className={selectClass}
       >
-        <option value="all">All difficulties</option>
-        <option value="easy">Easy</option>
-        <option value="medium">Medium</option>
-        <option value="hard">Hard</option>
+        <option value="all">All difficulties ({problems.length})</option>
+        <option value="easy">Easy ({diffCounts.easy})</option>
+        <option value="medium">Medium ({diffCounts.medium})</option>
+        <option value="hard">Hard ({diffCounts.hard})</option>
       </select>
 
+      {/* Skill filter with real counts */}
       <select
         value={skill}
         onChange={(e) => setSkill(e.target.value)}
         aria-label="Filter by skill"
         className={selectClass}
       >
+        <option value="all">All skills</option>
         {skills.map((s) => (
           <option key={s} value={s}>
-            {s === "all" ? "All skills" : s}
+            {s} ({skillCounts[s] ?? 0})
           </option>
         ))}
       </select>
 
+      {/* Status filter */}
       <select
         value={status}
         onChange={(e) => setStatus(e.target.value as StatusFilter)}
@@ -226,10 +322,21 @@ function FilterBar({
 
 export default function ProblemsPage() {
   const reduce = useReducedMotion();
-  const { data: problems = [], isLoading, isError, error } = useQuery({
+  const { data: problems = [], isLoading, isError, error, isSuccess } = useQuery({
     queryKey: ["problems"],
     queryFn: fetchProblems,
   });
+
+  // Track whether we've completed the first real load.
+  // Only the initial data load gets the staggered entrance — filter changes don't re-trigger it.
+  const didInitialLoad = useRef(false);
+  const [initialLoad, setInitialLoad] = useState(false);
+  useEffect(() => {
+    if (isSuccess && !didInitialLoad.current) {
+      didInitialLoad.current = true;
+      setInitialLoad(true);
+    }
+  }, [isSuccess]);
 
   const [difficulty, setDifficulty] = useState<DifficultyFilter>("all");
   const [track, setTrack] = useState<string>("all");
@@ -261,12 +368,16 @@ export default function ProblemsPage() {
         <h1 className="font-serif text-3xl font-semibold text-text tracking-tight">
           Problem Catalogue
         </h1>
-        <p className="mt-2 text-sm text-text-secondary">
-          Pick a ticket, fix the bug. Every problem is sourced from a real Postgres instance.
-        </p>
+        {/* Honest hero stat line — derived from real fetched data, no hardcoded numbers */}
+        {isSuccess && <HeroStatLine problems={problems} />}
+        {!isSuccess && !isError && (
+          <p className="mt-2 text-sm text-text-secondary">
+            Pick a ticket, fix the bug. Every problem is sourced from a real Postgres instance.
+          </p>
+        )}
       </motion.div>
 
-      {/* ── Filters ── */}
+      {/* ── Filters with live counts ── */}
       {!isLoading && !isError && (
         <motion.div
           initial={reduce ? false : { opacity: 0, y: 6 }}
@@ -309,7 +420,12 @@ export default function ProblemsPage() {
               <EmptyState key="empty" filtered={hasActiveFilter} />
             ) : (
               filtered.map((problem, index) => (
-                <ProblemRow key={problem.id} problem={problem} index={index} />
+                <ProblemRow
+                  key={problem.id}
+                  problem={problem}
+                  index={index}
+                  initialLoad={initialLoad}
+                />
               ))
             )}
           </AnimatePresence>

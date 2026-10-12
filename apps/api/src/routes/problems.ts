@@ -9,6 +9,46 @@ const router = Router();
 const PROBLEMS_ROOT = path.resolve(__dirname, "../../../../packages/problems");
 
 /**
+ * Counts test cases in a file by matching `test(` (Jest/Mocha) or `def test_` (pytest).
+ */
+function countTestsInFile(filePath: string): number {
+  if (!fs.existsSync(filePath)) return 0;
+  const content = fs.readFileSync(filePath, "utf-8");
+  // Match Jest/Mocha: test("..." or test(`...
+  const jestMatches = (content.match(/\btest\s*\(/g) ?? []).length;
+  // Match pytest: def test_
+  const pytestMatches = (content.match(/\bdef test_/g) ?? []).length;
+  return jestMatches + pytestMatches;
+}
+
+/**
+ * Counts the total visible + hidden checks for a problem pack.
+ * Walks the repo/tests/visible and tests/hidden directories.
+ */
+function countChecksForSlug(slug: string): number {
+  const packDir = path.join(PROBLEMS_ROOT, slug);
+  let total = 0;
+
+  const scanDir = (dir: string) => {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isFile() && /\.(js|ts|py)$/.test(entry.name)) {
+        total += countTestsInFile(path.join(dir, entry.name));
+      } else if (entry.isDirectory()) {
+        scanDir(path.join(dir, entry.name));
+      }
+    }
+  };
+
+  // Visible tests live inside the repo snapshot
+  scanDir(path.join(packDir, "repo", "tests", "visible"));
+  // Hidden tests live outside the repo snapshot
+  scanDir(path.join(packDir, "tests", "hidden"));
+
+  return total;
+}
+
+/**
  * GET /api/problems
  * Returns all problems with their latest PUBLISHED version joined in.
  * Only real rows from the DB — no padding.
@@ -45,6 +85,7 @@ router.get("/", async (_req: Request, res: Response): Promise<void> => {
     stack: p.stack,
     createdAt: p.createdAt,
     currentVersion: p.versions[0] ?? null,
+    checkCount: countChecksForSlug(p.slug),
   }));
 
   res.json({ ok: true, data: shaped });

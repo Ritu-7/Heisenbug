@@ -75,6 +75,7 @@ export interface Problem {
   stack: string;
   createdAt: string;
   currentVersion: ProblemVersionSummary | null;
+  checkCount: number;
 }
 
 export interface Submission {
