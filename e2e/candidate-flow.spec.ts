@@ -23,7 +23,7 @@ test.describe('Candidate Practice Flow', () => {
     }, token);
 
     // 2. Open the catalogue
-    await page.goto('/');
+    await page.goto('/problems');
     await expect(page.locator('header')).toContainText('alice@heisenbug.dev');
     await expect(page.getByRole('heading', { name: 'Problem Catalogue' })).toBeVisible();
 
