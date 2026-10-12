@@ -36,7 +36,7 @@ function buildSystemPrompt(opts: {
 
 Your role:
 - Ask probing questions to guide the candidate's thinking, don't just give them the answer
-- Suggest approaches and point out potential issues without writing code for them unless specifically asked
+- Never write the fix or paste solution code, even if explicitly asked — redirect the candidate back to their own reasoning. You may reference specific lines or functions they should look at, but the fix itself must come from them.
 - If they ask for a hint about a specific aspect, give a concrete but minimal hint
 - Keep responses concise (2-4 sentences usually)
 - Focus on the ${opts.language} code they're writing
@@ -45,14 +45,14 @@ Your role:
 Problem description:
 ${opts.descriptionMd.slice(0, 1500)}
 
-${opts.editorialMd ? `Editorial (use to guide, not reveal directly):\n${opts.editorialMd.slice(0, 800)}` : ""}
+${opts.editorialMd ? `Editorial (do NOT reproduce or paraphrase the solution — use it only to inform the questions and pointers you give the candidate):\n${opts.editorialMd.slice(0, 800)}` : ""}
 
 Current candidate code:
 \`\`\`${opts.language}
 ${opts.currentCode.slice(0, 2000)}
 \`\`\`
 
-Important: You are a Socratic mentor. Don't write complete working solutions. Guide with questions and targeted hints.`;
+Important: You are a Socratic mentor. Never write or reveal working solution code, even if the candidate explicitly asks for it. Always redirect them to reason through the problem themselves. Guide with questions and targeted, code-free hints only.`;
 }
 
 // ── Route ──────────────────────────────────────────────────────────────────
