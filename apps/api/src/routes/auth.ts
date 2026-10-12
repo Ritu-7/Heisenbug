@@ -200,14 +200,41 @@ router.get("/me", requireAuth, async (req: Request, res: Response): Promise<void
 // ── GOOGLE OAUTH ROUTES ───────────────────────────────────────────────────
 
 /**
+ * Helper to get the frontend origin based on request or config
+ */
+function getFrontendUrl(req: Request, fallback?: string): string {
+  if (fallback) return fallback.replace(/\/$/, "");
+  if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL.replace(/\/$/, "");
+  const referer = req.get("referer");
+  if (referer) {
+    try {
+      return new URL(referer).origin;
+    } catch {
+      // ignore
+    }
+  }
+  return "http://localhost:3000";
+}
+
+/**
  * Helper to get the canonical Google OAuth callback URL based on environment
  */
 function getGoogleRedirectUri(req: Request): string {
   if (process.env.GOOGLE_CALLBACK_URL) {
-    return process.env.GOOGLE_CALLBACK_URL;
+    const configuredUrl = process.env.GOOGLE_CALLBACK_URL;
+    const host = req.get("host") || "";
+    const isLocalhostHost = host.includes("localhost") || host.includes("127.0.0.1");
+    const isLocalhostConfig = configuredUrl.includes("localhost") || configuredUrl.includes("127.0.0.1");
+
+    // Only strictly use GOOGLE_CALLBACK_URL if host environment matches (both local or both remote)
+    if (isLocalhostHost === isLocalhostConfig) {
+      return configuredUrl;
+    }
   }
+
+  const rawProto = req.get("x-forwarded-proto");
+  const protocol = rawProto ? rawProto.split(",")[0].trim() : req.protocol;
   const host = req.get("host") || "localhost:3001";
-  const protocol = req.protocol === "https" || req.get("x-forwarded-proto") === "https" ? "https" : "http";
   return `${protocol}://${host}/api/auth/google/callback`;
 }
 
@@ -228,21 +255,25 @@ router.get("/google/config", (_req: Request, res: Response): void => {
  * GET /api/auth/google
  * Initiates Google OAuth consent screen.
  * Query param `context`: "candidate" (default) or "recruiter"
+ * Query param `redirect`: destination URL after successful authentication
  */
 router.get("/google", (req: Request, res: Response): void => {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const frontendUrl = getFrontendUrl(req);
+  const context = req.query.context === "recruiter" ? "recruiter" : "candidate";
+  const loginPath = context === "recruiter" ? "/recruiter/login" : "/login";
 
   if (!clientId || !clientSecret) {
-    res.status(503).json({
-      ok: false,
-      error: "Google OAuth is not configured on this server. Please contact an administrator.",
-    });
+    const errorMsg = "Google OAuth is not configured on this server. Missing client credentials.";
+    res.redirect(`${frontendUrl}${loginPath}?error=${encodeURIComponent(errorMsg)}`);
     return;
   }
 
-  const context = req.query.context === "recruiter" ? "recruiter" : "candidate";
-  const state = Buffer.from(JSON.stringify({ context, ts: Date.now() })).toString("base64url");
+  const redirectTarget = typeof req.query.redirect === "string" ? req.query.redirect : "";
+  const state = Buffer.from(
+    JSON.stringify({ context, redirect: redirectTarget, frontendUrl, ts: Date.now() })
+  ).toString("base64url");
   const redirectUri = getGoogleRedirectUri(req);
 
   const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -264,31 +295,35 @@ router.get("/google", (req: Request, res: Response): void => {
 router.get("/google/callback", async (req: Request, res: Response): Promise<void> => {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-
-  if (!clientId || !clientSecret) {
-    res.redirect(`${frontendUrl}/login?error=${encodeURIComponent("Google OAuth not configured")}`);
-    return;
-  }
 
   const { code, state, error } = req.query;
 
-  if (error || typeof code !== "string") {
-    const errorMsg = (error as string) || "Authentication was cancelled";
-    res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(errorMsg)}`);
-    return;
-  }
-
   let context = "candidate";
+  let redirectTarget = "";
+  let frontendUrl = getFrontendUrl(req);
+
   if (typeof state === "string") {
     try {
       const parsedState = JSON.parse(Buffer.from(state, "base64url").toString("utf-8"));
-      if (parsedState.context === "recruiter") {
-        context = "recruiter";
-      }
+      if (parsedState.context === "recruiter") context = "recruiter";
+      if (parsedState.redirect) redirectTarget = parsedState.redirect;
+      if (parsedState.frontendUrl) frontendUrl = parsedState.frontendUrl;
     } catch {
-      // Ignore state parse errors, default to candidate
+      // Ignore state parse errors
     }
+  }
+
+  const loginPath = context === "recruiter" ? "/recruiter/login" : "/login";
+
+  if (!clientId || !clientSecret) {
+    res.redirect(`${frontendUrl}${loginPath}?error=${encodeURIComponent("Google OAuth not configured")}`);
+    return;
+  }
+
+  if (error || typeof code !== "string") {
+    const errorMsg = (error as string) || "Authentication was cancelled";
+    res.redirect(`${frontendUrl}${loginPath}?error=${encodeURIComponent(errorMsg)}`);
+    return;
   }
 
   try {
@@ -310,13 +345,19 @@ router.get("/google/callback", async (req: Request, res: Response): Promise<void
     if (!tokenResponse.ok) {
       const errBody = await tokenResponse.text();
       console.error("[google-oauth] Token exchange failed:", errBody);
-      res.redirect(`${frontendUrl}/login?error=${encodeURIComponent("Failed to exchange Google authorization code")}`);
+      let errMsg = "Failed to exchange Google authorization code";
+      try {
+        const errJson = JSON.parse(errBody);
+        if (errJson.error_description) errMsg = errJson.error_description;
+        else if (errJson.error) errMsg = errJson.error;
+      } catch {}
+      res.redirect(`${frontendUrl}${loginPath}?error=${encodeURIComponent(errMsg)}`);
       return;
     }
 
     const tokenData = (await tokenResponse.json()) as { access_token?: string; id_token?: string };
     if (!tokenData.access_token) {
-      res.redirect(`${frontendUrl}/login?error=${encodeURIComponent("No access token returned from Google")}`);
+      res.redirect(`${frontendUrl}${loginPath}?error=${encodeURIComponent("No access token returned from Google")}`);
       return;
     }
 
@@ -326,7 +367,7 @@ router.get("/google/callback", async (req: Request, res: Response): Promise<void
     });
 
     if (!userInfoResponse.ok) {
-      res.redirect(`${frontendUrl}/login?error=${encodeURIComponent("Failed to retrieve Google user profile")}`);
+      res.redirect(`${frontendUrl}${loginPath}?error=${encodeURIComponent("Failed to retrieve Google user profile")}`);
       return;
     }
 
@@ -338,7 +379,7 @@ router.get("/google/callback", async (req: Request, res: Response): Promise<void
     };
 
     if (!googleUser.email) {
-      res.redirect(`${frontendUrl}/login?error=${encodeURIComponent("Google account did not return an email address")}`);
+      res.redirect(`${frontendUrl}${loginPath}?error=${encodeURIComponent("Google account did not return an email address")}`);
       return;
     }
 
@@ -367,18 +408,25 @@ router.get("/google/callback", async (req: Request, res: Response): Promise<void
     const jwtToken = signToken({ sub: user.id, email: user.email, role: user.role });
 
     // Determine target page
-    let target = `${frontendUrl}/dashboard`;
-    if (user.role === "RECRUITER" || user.role === "ADMIN") {
-      target = `${frontendUrl}/recruiter/dashboard`;
-    } else if (context === "recruiter" && user.approvalStatus === "PENDING") {
-      target = `${frontendUrl}/recruiter/login?pending=1`;
+    let target: string;
+    if (context === "recruiter") {
+      if (user.approvalStatus === "PENDING" && user.role !== "RECRUITER" && user.role !== "ADMIN") {
+        target = `${frontendUrl}/recruiter/login?pending=1`;
+      } else {
+        target = `${frontendUrl}/recruiter/login`;
+      }
+    } else {
+      // Candidate login portal handles the token fragment and forwards to redirectTarget or /dashboard
+      target = redirectTarget
+        ? `${frontendUrl}/login?redirect=${encodeURIComponent(redirectTarget)}`
+        : `${frontendUrl}/login`;
     }
 
-    // Redirect to frontend with token
+    // Redirect to frontend with token in hash fragment
     res.redirect(`${target}#token=${encodeURIComponent(jwtToken)}`);
   } catch (err) {
     console.error("[google-oauth] Error in callback handler:", err);
-    res.redirect(`${frontendUrl}/login?error=${encodeURIComponent("An error occurred during Google sign in")}`);
+    res.redirect(`${frontendUrl}${loginPath}?error=${encodeURIComponent("An error occurred during Google sign in: " + (err as Error).message)}`);
   }
 });
 

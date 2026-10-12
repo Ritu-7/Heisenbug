@@ -10,6 +10,7 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   loginUser,
   getAuthToken,
+  setAuthToken,
   fetchProblems,
   fetchAssessments,
   createAssessment,
@@ -394,6 +395,19 @@ export default function RecruiterDashboard() {
 
   useEffect(() => {
     async function init() {
+      if (typeof window !== "undefined" && window.location.hash.includes("token=")) {
+        const match = window.location.hash.match(/token=([^&]+)/);
+        if (match && match[1]) {
+          const token = decodeURIComponent(match[1]);
+          setAuthToken(token);
+          window.history.replaceState(null, "", window.location.pathname + (window.location.search || ""));
+          queryClient.invalidateQueries({ queryKey: ["me"] });
+          queryClient.invalidateQueries({ queryKey: ["assessments"] });
+          setAuthed(true);
+          return;
+        }
+      }
+
       const existing = getAuthToken();
       if (existing) {
         setAuthed(true);
@@ -407,7 +421,7 @@ export default function RecruiterDashboard() {
       }
     }
     init();
-  }, []);
+  }, [queryClient]);
 
   const { data: assessments = [], isLoading, isError, error } = useQuery({
     queryKey: ["assessments"],

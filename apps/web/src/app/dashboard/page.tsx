@@ -10,6 +10,8 @@ import {
   createSession,
   loginUser,
   getAuthToken,
+  setAuthToken,
+  fetchCurrentUser,
   type Session,
   type Problem,
 } from "@/lib/api";
@@ -245,10 +247,27 @@ export default function CandidateDashboardPage() {
 
   useEffect(() => {
     async function initAuth() {
+      // 1. Check if token arrived via hash fragment (e.g. Google OAuth redirect)
+      if (typeof window !== "undefined" && window.location.hash.includes("token=")) {
+        const match = window.location.hash.match(/token=([^&]+)/);
+        if (match && match[1]) {
+          const token = decodeURIComponent(match[1]);
+          setAuthToken(token);
+          window.history.replaceState(null, "", window.location.pathname + (window.location.search || ""));
+          queryClient.invalidateQueries({ queryKey: ["me"] });
+          queryClient.invalidateQueries({ queryKey: ["sessions"] });
+          setAuthed(true);
+          return;
+        }
+      }
+
+      // 2. Check if already authenticated in localStorage
       if (getAuthToken()) {
         setAuthed(true);
         return;
       }
+
+      // 3. Fallback to demo profile if not logged in
       try {
         await loginUser("alice@heisenbug.dev", "testcandidate123");
         setAuthed(true);
@@ -257,7 +276,13 @@ export default function CandidateDashboardPage() {
       }
     }
     initAuth();
-  }, []);
+  }, [queryClient]);
+
+  const { data: currentUser } = useQuery({
+    queryKey: ["me"],
+    queryFn: fetchCurrentUser,
+    enabled: authed,
+  });
 
   const {
     data: sessions = [],
@@ -305,8 +330,8 @@ export default function CandidateDashboardPage() {
             Candidate Dashboard
           </h1>
           <p className="mt-1 text-sm text-text-secondary">
-            Welcome back, <span className="font-medium text-text">Alice Candidate</span> (
-            <code className="font-mono text-xs">alice@heisenbug.dev</code>)
+            Welcome back, <span className="font-medium text-text">{currentUser?.name || "Alice Candidate"}</span> (
+            <code className="font-mono text-xs">{currentUser?.email || "alice@heisenbug.dev"}</code>)
           </p>
         </div>
 

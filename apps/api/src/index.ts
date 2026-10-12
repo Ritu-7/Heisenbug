@@ -19,6 +19,7 @@ const app = express();
 const PORT = process.env.PORT ?? 3001;
 
 // ── Global middleware ──────────────────────────────────────────────────────
+app.set("trust proxy", 1);
 app.use(cors({ origin: process.env.CORS_ORIGIN ?? "*" }));
 app.use(express.json());
 
