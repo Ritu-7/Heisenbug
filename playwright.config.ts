@@ -42,6 +42,15 @@ export default defineConfig({
         PORT: '3001',
         JWT_SECRET:
           process.env.JWT_SECRET || 'heisenbug-dev-jwt-secret-change-in-prod-please',
+        CLERK_PUBLISHABLE_KEY:
+          process.env.CLERK_PUBLISHABLE_KEY ||
+          'pk_test_c3RhYmxlLWZhd24tMjc1LmNsZXJrLmFjY291bnRzLmRldiQ',
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
+          process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ||
+          'pk_test_c3RhYmxlLWZhd24tMjc1LmNsZXJrLmFjY291bnRzLmRldiQ',
+        CLERK_SECRET_KEY:
+          process.env.CLERK_SECRET_KEY ||
+          'sk_test_stp220g73j4tus1ZlV8JNEuNghs4eHG1uJ7fctDnBf',
       },
     },
     {
@@ -54,6 +63,12 @@ export default defineConfig({
       env: {
         PORT: '3000',
         NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001',
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
+          process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ||
+          'pk_test_c3RhYmxlLWZhd24tMjc1LmNsZXJrLmFjY291bnRzLmRldiQ',
+        CLERK_SECRET_KEY:
+          process.env.CLERK_SECRET_KEY ||
+          'sk_test_stp220g73j4tus1ZlV8JNEuNghs4eHG1uJ7fctDnBf',
       },
     },
   ],
