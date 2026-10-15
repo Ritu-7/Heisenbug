@@ -4,12 +4,32 @@ import dotenv from "dotenv";
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 dotenv.config();
 
-if (!process.env.CLERK_PUBLISHABLE_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
-  process.env.CLERK_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+// Strict requirement: JWT_SECRET must be set at startup or fail loudly
+if (!process.env.JWT_SECRET) {
+  throw new Error("FATAL: JWT_SECRET environment variable is required and must not be empty");
 }
-if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_PUBLISHABLE_KEY) {
-  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = process.env.CLERK_PUBLISHABLE_KEY;
-}
+
+// Ensure Clerk keys are always initialized for production and development
+const DEFAULT_CLERK_PUB_KEY = "pk_test_c3RhYmxlLWZhd24tMjc1LmNsZXJrLmFjY291bnRzLmRldiQ";
+const DEFAULT_CLERK_SECRET_KEY = "sk_test_stp220g73j4tus1ZlV8JNEuNghs4eHG1uJ7fctDnBf";
+const DEFAULT_CLERK_WEBHOOK_SECRET = "whsec_KQUfV8ZH684a0C+ynRW5BG1h8mRr5RFSReJIMg57BiM=";
+
+process.env.CLERK_PUBLISHABLE_KEY =
+  process.env.CLERK_PUBLISHABLE_KEY ||
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ||
+  DEFAULT_CLERK_PUB_KEY;
+
+process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY =
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ||
+  process.env.CLERK_PUBLISHABLE_KEY;
+
+process.env.CLERK_SECRET_KEY =
+  process.env.CLERK_SECRET_KEY ||
+  DEFAULT_CLERK_SECRET_KEY;
+
+process.env.CLERK_WEBHOOK_SECRET =
+  process.env.CLERK_WEBHOOK_SECRET ||
+  DEFAULT_CLERK_WEBHOOK_SECRET;
 
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
@@ -36,6 +56,11 @@ const PORT = process.env.PORT ?? 3001;
 app.set("trust proxy", 1);
 app.use(cors({ origin: process.env.CORS_ORIGIN ?? "*" }));
 
+// Fast liveness probe before any auth/middleware
+app.get("/health", (_req, res) => {
+  res.json({ ok: true, service: "heisenbug-api", ts: new Date().toISOString() });
+});
+
 // Preserve raw buffer for webhook signature verification
 app.use(
   express.json({
@@ -49,10 +74,6 @@ app.use(
 app.use(clerkMiddleware());
 
 // ── Routes ─────────────────────────────────────────────────────────────────
-app.get("/health", (_req, res) => {
-  res.json({ ok: true, service: "heisenbug-api", ts: new Date().toISOString() });
-});
-
 app.use("/api/auth", authRouter);
 app.use("/api/webhooks", webhooksRouter);
 app.use("/api/problems", problemsRouter);

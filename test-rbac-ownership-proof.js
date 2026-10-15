@@ -27,10 +27,10 @@ async function main() {
 
   // 1. Authenticate users of all 4 roles
   console.log("1. Authenticating test accounts for all roles...");
-  const candidateToken = await login("alice@heisenbug.dev", "testcandidate123");
-  const recruiterToken = await login("recruiter@heisenbug.dev", "recruiterpassword123");
-  const authorToken = await login("author@heisenbug.dev", "authorpassword123");
-  const adminToken = await login("admin@heisenbug.dev", "adminpassword123");
+  const candidateToken = await login("alice@heisenbug.dev", "Heisenbug_Alice_Rotated_2026_Secure!");
+  const recruiterToken = await login("recruiter@heisenbug.dev", "Heisenbug_Recruiter_Rotated_2026_Secure!");
+  const authorToken = await login("author@heisenbug.dev", "Heisenbug_Author_Rotated_2026_Secure!");
+  const adminToken = await login("admin@heisenbug.dev", "Heisenbug_Admin_Rotated_2026_Secure!");
 
   console.log("  ✓ Candidate token acquired (alice@heisenbug.dev, role: CANDIDATE)");
   console.log("  ✓ Recruiter token acquired (recruiter@heisenbug.dev, role: RECRUITER)");

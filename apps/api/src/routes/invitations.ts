@@ -164,9 +164,13 @@ router.post(
     });
 
     // Issue a session-scoped JWT so the candidate can call Run/Submit
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      throw new Error("JWT_SECRET environment variable is required");
+    }
     const token = jwt.sign(
       { sub: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET || "fallback_secret",
+      jwtSecret,
       { expiresIn: "7d" }
     );
 

@@ -33,7 +33,7 @@ export default function AdminProblemAuthoringPage() {
   // Auto-authenticate as admin if no token in dev
   const ensureAdminAuth = async () => {
     if (!getAuthToken()) {
-      await loginUser("admin@heisenbug.dev", "adminpassword123");
+      await loginUser("admin@heisenbug.dev", "Heisenbug_Admin_Rotated_2026_Secure!");
     }
   };
 

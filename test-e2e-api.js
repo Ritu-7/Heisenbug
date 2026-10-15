@@ -18,7 +18,7 @@ async function main() {
   const loginRes = await request(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'alice@heisenbug.dev', password: 'testcandidate123' }),
+    body: JSON.stringify({ email: 'alice@heisenbug.dev', password: 'Heisenbug_Alice_Rotated_2026_Secure!' }),
   });
   const token = loginRes.token;
   console.log('✓ Logged in as alice@heisenbug.dev');

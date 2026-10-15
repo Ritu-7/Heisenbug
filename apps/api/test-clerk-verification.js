@@ -177,10 +177,11 @@ async function run() {
       throw new Error("Seeded user alice@heisenbug.dev not found");
     }
 
-    // Verify legacy JWT token issued for assessment/seeded flow verifies via requireAuth
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) throw new Error("JWT_SECRET environment variable is required");
     const legacyToken = jwt.sign(
       { sub: alice.id, email: alice.email, role: alice.role },
-      process.env.JWT_SECRET || "fallback_secret",
+      jwtSecret,
       { expiresIn: "1h" }
     );
 

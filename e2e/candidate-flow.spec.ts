@@ -1,21 +1,14 @@
 import { test, expect } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getClerkSessionToken } from './clerk-auth';
 
 test.describe('Candidate Practice Flow', () => {
   test('sign in, view problem tabs, run partial starter code, submit reference solution for 100/100', async ({
     page,
-    request,
   }) => {
-    // 1. Sign in as the seeded candidate
-    const loginRes = await request.post('http://localhost:3001/api/auth/login', {
-      data: {
-        email: 'alice@heisenbug.dev',
-        password: 'testcandidate123',
-      },
-    });
-    expect(loginRes.ok()).toBeTruthy();
-    const { token } = await loginRes.json();
+    // 1. Obtain real Clerk session token for seeded candidate
+    const token = await getClerkSessionToken('alice@heisenbug.dev');
     expect(token).toBeTruthy();
 
     await page.addInitScript((authToken) => {

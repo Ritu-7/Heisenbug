@@ -12,7 +12,7 @@ async function main() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       email: "recruiter@heisenbug.dev",
-      password: "recruiterpassword123",
+      password: "Heisenbug_Recruiter_Rotated_2026_Secure!",
     }),
   });
   const loginData = await loginRes.json();

@@ -57,8 +57,9 @@ npm run dev
 ---
 
 ## Access & Test Credentials
-
+Authentication is managed via Clerk. For local testing with seeded accounts:
 - **Web App**: `http://localhost:3000`
 - **API Server**: `http://localhost:3001`
-- **Candidate User**: `alice@heisenbug.dev` / `testcandidate123`
-- **Admin User**: `admin@heisenbug.dev` / `adminpassword123`
+- **Candidate User**: `alice@heisenbug.dev` / `Heisenbug_Alice_Rotated_2026_Secure!`
+- **Admin User**: `admin@heisenbug.dev` / `Heisenbug_Admin_Rotated_2026_Secure!`
+- **Recruiter User**: `recruiter@heisenbug.dev` / `Heisenbug_Recruiter_Rotated_2026_Secure!`

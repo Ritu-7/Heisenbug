@@ -609,7 +609,7 @@ function WorkspaceContent({ slug }: { slug: string }) {
   useEffect(() => {
     async function init() {
       if (getAuthToken()) { setAuthed(true); return; }
-      try { await loginUser("alice@heisenbug.dev", "testcandidate123"); setAuthed(true); }
+      try { await loginUser("alice@heisenbug.dev", "Heisenbug_Alice_Rotated_2026_Secure!"); setAuthed(true); }
       catch { /* ignore */ }
     }
     init();

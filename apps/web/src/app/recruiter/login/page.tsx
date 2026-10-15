@@ -123,10 +123,10 @@ function RecruiterLoginFormContent() {
 
   const fillRecruiterDemo = () => {
     setEmail("recruiter@heisenbug.dev");
-    setPassword("recruiterpassword123");
+    setPassword("Heisenbug_Recruiter_Rotated_2026_Secure!");
     setMode("login");
     setError(null);
-    handleSubmit(undefined, "recruiter@heisenbug.dev", "recruiterpassword123");
+    handleSubmit(undefined, "recruiter@heisenbug.dev", "Heisenbug_Recruiter_Rotated_2026_Secure!");
   };
 
   return (

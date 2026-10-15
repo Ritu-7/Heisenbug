@@ -269,7 +269,7 @@ export default function CandidateDashboardPage() {
 
       // 3. Fallback to demo profile if not logged in
       try {
-        await loginUser("alice@heisenbug.dev", "testcandidate123");
+        await loginUser("alice@heisenbug.dev", "Heisenbug_Alice_Rotated_2026_Secure!");
         setAuthed(true);
       } catch (err) {
         setAuthError((err as Error).message);

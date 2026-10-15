@@ -49,9 +49,9 @@ function AdminLoginFormContent() {
 
   const fillAdminDemo = () => {
     setEmail("admin@heisenbug.dev");
-    setPassword("adminpassword123");
+    setPassword("Heisenbug_Admin_Rotated_2026_Secure!");
     setError(null);
-    handleSubmit(undefined, "admin@heisenbug.dev", "adminpassword123");
+    handleSubmit(undefined, "admin@heisenbug.dev", "Heisenbug_Admin_Rotated_2026_Secure!");
   };
 
   return (

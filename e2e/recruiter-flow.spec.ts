@@ -1,20 +1,13 @@
 import { test, expect } from '@playwright/test';
+import { getClerkSessionToken } from './clerk-auth';
 
 test.describe('Recruiter Flow', () => {
   test('sign in as recruiter, create assessment, invite candidate, candidate takes assessment with locked tabs and countdown, submits, recruiter sees SUBMITTED', async ({
     page,
     browser,
-    request,
   }) => {
-    // 1. Sign in as recruiter via API
-    const loginRes = await request.post('http://localhost:3001/api/auth/login', {
-      data: {
-        email: 'recruiter@heisenbug.dev',
-        password: 'recruiterpassword123',
-      },
-    });
-    expect(loginRes.ok()).toBeTruthy();
-    const { token } = await loginRes.json();
+    // 1. Obtain real Clerk session token for seeded recruiter
+    const token = await getClerkSessionToken('recruiter@heisenbug.dev');
     expect(token).toBeTruthy();
 
     await page.addInitScript((authToken) => {

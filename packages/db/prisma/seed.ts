@@ -188,15 +188,16 @@ async function main() {
   console.log("🌱 Seeding database...");
 
   // ── Seed test candidate user ─────────────────────────────────────────────
-  // Password: "testcandidate123" (bcrypt, cost 10)
   const CANDIDATE_EMAIL = "alice@heisenbug.dev";
-  const CANDIDATE_PASSWORD = "testcandidate123";
+  const CANDIDATE_PASSWORD = "Heisenbug_Alice_Rotated_2026_Secure!";
+  const CANDIDATE_ID = "user_3Kj03zYIzBuj6qJn3k1Q1wcHn7e";
   const passwordHash = await bcrypt.hash(CANDIDATE_PASSWORD, 10);
 
   const candidate = await prisma.user.upsert({
     where: { email: CANDIDATE_EMAIL },
-    update: { passwordHash },
+    update: { id: CANDIDATE_ID, passwordHash },
     create: {
+      id: CANDIDATE_ID,
       email: CANDIDATE_EMAIL,
       name: "Alice Candidate",
       role: "CANDIDATE",
@@ -207,13 +208,15 @@ async function main() {
 
   // ── Seed admin user ─────────────────────────────────────────────────────
   const ADMIN_EMAIL = "admin@heisenbug.dev";
-  const ADMIN_PASSWORD = "adminpassword123";
+  const ADMIN_PASSWORD = "Heisenbug_Admin_Rotated_2026_Secure!";
+  const ADMIN_ID = "user_3Kj048oi2wO3sqP1mh97dCDOMtV";
   const adminHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
 
   const admin = await prisma.user.upsert({
     where: { email: ADMIN_EMAIL },
-    update: { passwordHash: adminHash },
+    update: { id: ADMIN_ID, passwordHash: adminHash },
     create: {
+      id: ADMIN_ID,
       email: ADMIN_EMAIL,
       name: "Heisenbug Admin",
       role: "ADMIN",
@@ -224,13 +227,15 @@ async function main() {
 
   // ── Seed recruiter user ───────────────────────────────────────────────────
   const RECRUITER_EMAIL = "recruiter@heisenbug.dev";
-  const RECRUITER_PASSWORD = "recruiterpassword123";
+  const RECRUITER_PASSWORD = "Heisenbug_Recruiter_Rotated_2026_Secure!";
+  const RECRUITER_ID = "user_3Kj044VTw2XS8PQw3iHHckytYzj";
   const recruiterHash = await bcrypt.hash(RECRUITER_PASSWORD, 10);
 
   const recruiter = await prisma.user.upsert({
     where: { email: RECRUITER_EMAIL },
-    update: { passwordHash: recruiterHash },
+    update: { id: RECRUITER_ID, passwordHash: recruiterHash },
     create: {
+      id: RECRUITER_ID,
       email: RECRUITER_EMAIL,
       name: "Dana Recruiter",
       role: "RECRUITER",
@@ -241,13 +246,15 @@ async function main() {
 
   // ── Seed author user ───────────────────────────────────────────────────────
   const AUTHOR_EMAIL = "author@heisenbug.dev";
-  const AUTHOR_PASSWORD = "authorpassword123";
+  const AUTHOR_PASSWORD = "Heisenbug_Author_Rotated_2026_Secure!";
+  const AUTHOR_ID = "user_3Kj04GrfHvi9ziOyM8dMwYk4PTX";
   const authorHash = await bcrypt.hash(AUTHOR_PASSWORD, 10);
 
   const author = await prisma.user.upsert({
     where: { email: AUTHOR_EMAIL },
-    update: { passwordHash: authorHash },
+    update: { id: AUTHOR_ID, passwordHash: authorHash },
     create: {
+      id: AUTHOR_ID,
       email: AUTHOR_EMAIL,
       name: "Arthur Author",
       role: "AUTHOR",

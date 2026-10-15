@@ -18,7 +18,7 @@ async function runProof() {
   const recruiterLogin = await request(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'recruiter@heisenbug.dev', password: 'recruiterpassword123' }),
+    body: JSON.stringify({ email: 'recruiter@heisenbug.dev', password: 'Heisenbug_Recruiter_Rotated_2026_Secure!' }),
   });
   const recruiterToken = recruiterLogin.token;
   console.log('  ✓ Recruiter login successful.');

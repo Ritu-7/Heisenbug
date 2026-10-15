@@ -15,7 +15,10 @@ async function request(url, options = {}) {
 }
 
 const jwt = require("jsonwebtoken");
-const JWT_SECRET = process.env.JWT_SECRET || "heisenbug-dev-jwt-secret-change-in-prod-please";
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable is required and must not be empty");
+}
 
 async function getAuthToken(email) {
   const user = await prisma.user.findUnique({ where: { email } });

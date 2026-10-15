@@ -414,7 +414,7 @@ export default function RecruiterDashboard() {
         return;
       }
       try {
-        await loginUser("recruiter@heisenbug.dev", "recruiterpassword123");
+        await loginUser("recruiter@heisenbug.dev", "Heisenbug_Recruiter_Rotated_2026_Secure!");
         setAuthed(true);
       } catch (err) {
         setAuthError((err as Error).message);
