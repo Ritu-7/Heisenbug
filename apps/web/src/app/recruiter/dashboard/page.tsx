@@ -9,7 +9,6 @@ import Link from "next/link";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   getActiveToken,
-  getAuthToken,
   setAuthToken,
   fetchProblems,
   fetchAssessments,

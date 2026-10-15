@@ -4,9 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { getAuthToken } from "@/lib/api";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+import { apiFetch } from "@/lib/api";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -19,29 +17,19 @@ interface MentorMessage {
 // ── API helpers ────────────────────────────────────────────────────────────
 
 async function fetchMentorHistory(sessionId: string): Promise<MentorMessage[]> {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/mentor/history`, {
-    headers: { Authorization: `Bearer ${getAuthToken()}` },
-  });
-  if (!res.ok) throw new Error("Failed to load mentor history");
-  const data = await res.json();
-  return data.data ?? [];
+  const res = await apiFetch<{ ok: boolean; data: MentorMessage[] }>(`/api/sessions/${sessionId}/mentor/history`);
+  return res.data ?? [];
 }
 
 async function sendMentorMessage(
   sessionId: string,
   message: string,
 ): Promise<{ reply: string }> {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/mentor`, {
+  const res = await apiFetch<{ ok: boolean; data: { reply: string } }>(`/api/sessions/${sessionId}/mentor`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${getAuthToken()}`,
-    },
     body: JSON.stringify({ message }),
   });
-  const data = await res.json();
-  if (!data.ok) throw new Error(data.error ?? "Mentor unavailable");
-  return data.data;
+  return res.data;
 }
 
 // ── Message bubble ─────────────────────────────────────────────────────────

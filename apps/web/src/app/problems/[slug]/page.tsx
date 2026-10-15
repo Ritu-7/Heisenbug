@@ -20,7 +20,7 @@ import {
   runSession,
   submitSession,
   getActiveToken,
-  getAuthToken,
+  fetchSessionSubmissions,
   fetchProblemNearMisses,
   type Session,
   type SessionEvent,
@@ -342,11 +342,7 @@ function SubmissionsPanel({ sessionId }: { sessionId: string | null }) {
     queryKey: ["submissions", sessionId],
     queryFn: async () => {
       if (!sessionId) return [];
-      const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/submissions`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("heisenbug_jwt_token")}` },
-      });
-      const data = await res.json();
-      return data.data ?? [];
+      return fetchSessionSubmissions(sessionId);
     },
     enabled: !!sessionId,
   });
@@ -681,7 +677,12 @@ function WorkspaceContent({ slug }: { slug: string }) {
       if (!versionId) throw new Error("Version not found");
       return createSession(versionId, "PRACTICE");
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["sessions"] }),
+    onSuccess: (newSession) => {
+      queryClient.setQueryData(["sessions"], (old: Session[] | undefined) => {
+        return old ? [newSession, ...old] : [newSession];
+      });
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    },
   });
 
   // ── Query: Events (restore last CODE_SAVE) ────────────────────────────
@@ -755,18 +756,14 @@ function WorkspaceContent({ slug }: { slug: string }) {
     queryKey: ["submissions", activeSession?.id],
     queryFn: async () => {
       if (!activeSession?.id) return [];
-      const res = await fetch(`${API_BASE}/api/sessions/${activeSession.id}/submissions`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("heisenbug_jwt_token")}` },
-      });
-      const json = await res.json();
-      return json.data ?? [];
+      return fetchSessionSubmissions(activeSession.id);
     },
     enabled: !!activeSession?.id,
   });
 
   const hasPassed =
     submitResult?.verdict?.passed === true ||
-    userSubmissions.some((s: { verdictJson?: { passed?: boolean } }) => s.verdictJson?.passed === true);
+    userSubmissions.some((s) => (s.verdictJson as { passed?: boolean } | undefined)?.passed === true);
 
   // ── Render ────────────────────────────────────────────────────────────
 

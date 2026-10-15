@@ -132,19 +132,28 @@ export async function getActiveToken(): Promise<string | null> {
       const clerk = (window as any).Clerk;
       if (clerk?.session) {
         const token = await clerk.session.getToken();
-        if (token) return token;
+        if (token) {
+          localStorage.setItem(TOKEN_KEY, token);
+          return token;
+        }
       }
     } catch {
       // fallback to stored token
     }
-    return localStorage.getItem(TOKEN_KEY);
+    const stored = localStorage.getItem(TOKEN_KEY);
+    if (stored) return stored;
+
+    const match = document.cookie.match(/(?:^|;\s*)__session=([^;]+)/);
+    if (match && match[1]) {
+      return decodeURIComponent(match[1]);
+    }
   }
   return null;
 }
 
 // ── Fetch helpers ──────────────────────────────────────────────────────────
 
-async function apiFetch<T>(
+export async function apiFetch<T>(
   path: string,
   options?: RequestInit,
 ): Promise<T> {
@@ -190,7 +199,7 @@ export async function fetchProblems(): Promise<Problem[]> {
 
 /** Fetch user's sessions */
 export async function fetchUserSessions(): Promise<Session[]> {
-  const token = getAuthToken();
+  const token = await getActiveToken();
   if (!token) return [];
   const data = await apiFetch<SessionsResponse>("/api/sessions");
   return data.data;

@@ -8,35 +8,27 @@ import {
   fetchSession,
   fetchSessionEvents,
   fetchSessionSubmissions,
-  getAuthToken,
+  apiFetch,
 } from "@/lib/api";
 import { DifficultyBadge } from "@/components/badge";
 import { SessionReplay } from "@/components/session-replay";
 import { cn } from "@/lib/utils";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-
 async function fetchAICollab(sessionId: string) {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/ai-collab`, {
-    headers: { Authorization: `Bearer ${getAuthToken()}` },
-  });
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data.data;
+  try {
+    const res = await apiFetch<{ ok: boolean; data: any }>(`/api/sessions/${sessionId}/ai-collab`);
+    return res.data;
+  } catch {
+    return null;
+  }
 }
 
 async function forkSession(sessionId: string, atTimestamp?: string) {
-  const res = await fetch(`${API_BASE}/api/sessions/${sessionId}/fork`, {
+  const res = await apiFetch<{ ok: boolean; data: any }>(`/api/sessions/${sessionId}/fork`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${getAuthToken()}`,
-    },
     body: JSON.stringify(atTimestamp ? { atTimestamp } : {}),
   });
-  const data = await res.json();
-  if (!data.ok) throw new Error(data.error ?? "Fork failed");
-  return data.data;
+  return res.data;
 }
 
 export default function CandidateReportPage({
