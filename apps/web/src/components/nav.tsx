@@ -1,18 +1,51 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useUser, UserButton } from "@clerk/nextjs";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { fetchCurrentUser, removeAuthToken } from "@/lib/api";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export function Nav() {
   const pathname = usePathname();
-  const { isSignedIn, user, isLoaded } = useUser();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { isSignedIn, user: clerkUser, isLoaded } = useUser();
 
-  const role = (user?.publicMetadata?.role as string) || "CANDIDATE";
-  const isRecruiter = role === "RECRUITER" || role === "ADMIN";
-  const isAdmin = role === "ADMIN";
+  // Fallback for legacy demo/seeded token in localStorage until Prompt 2 migrates recruiter/demo flows
+  const { data: legacyUser } = useQuery({
+    queryKey: ["me"],
+    queryFn: fetchCurrentUser,
+    enabled: isLoaded && !isSignedIn,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const currentUser = isSignedIn && clerkUser
+    ? {
+        email: clerkUser.primaryEmailAddress?.emailAddress ?? "",
+        role: (clerkUser.publicMetadata?.role as string) || "CANDIDATE",
+        isClerk: true,
+      }
+    : legacyUser
+    ? {
+        email: legacyUser.email,
+        role: legacyUser.role,
+        isClerk: false,
+      }
+    : null;
+
+  const isRecruiter = currentUser?.role === "RECRUITER" || currentUser?.role === "ADMIN";
+  const isAdmin = currentUser?.role === "ADMIN";
+
+  const handleLogout = async () => {
+    removeAuthToken();
+    await queryClient.invalidateQueries({ queryKey: ["me"] });
+    await queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    await queryClient.invalidateQueries({ queryKey: ["assessments"] });
+    router.push("/login");
+  };
 
   const links = [
     { href: "/problems", label: "Catalogue" },
@@ -54,15 +87,25 @@ export function Nav() {
           {/* Theme toggle — visible on every page */}
           <ThemeToggle />
 
-          {isLoaded && isSignedIn && user ? (
+          {currentUser ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-text-secondary font-mono bg-surface-2 px-2.5 py-1 rounded border border-border">
-                {user.primaryEmailAddress?.emailAddress}
-                {role !== "CANDIDATE" && (
-                  <span className="ml-1.5 text-[10px] text-accent font-semibold uppercase">{role}</span>
+                {currentUser.email}
+                {currentUser.role !== "CANDIDATE" && (
+                  <span className="ml-1.5 text-[10px] text-accent font-semibold uppercase">{currentUser.role}</span>
                 )}
               </span>
-              <UserButton afterSignOutUrl="/login" />
+              {currentUser.isClerk ? (
+                <UserButton afterSignOutUrl="/login" />
+              ) : (
+                <button
+                  onClick={handleLogout}
+                  className="text-xs font-mono text-text-secondary hover:text-fail px-2 py-1 rounded border border-border hover:border-fail/40 transition-colors"
+                  title="Sign out"
+                >
+                  Sign out
+                </button>
+              )}
             </div>
           ) : (
             <Link
