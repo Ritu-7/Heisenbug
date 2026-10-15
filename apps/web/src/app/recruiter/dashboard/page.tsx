@@ -8,7 +8,7 @@ import { z } from "zod";
 import Link from "next/link";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
-  loginUser,
+  getActiveToken,
   getAuthToken,
   setAuthToken,
   fetchProblems,
@@ -408,17 +408,12 @@ export default function RecruiterDashboard() {
         }
       }
 
-      const existing = getAuthToken();
-      if (existing) {
+      const token = await getActiveToken();
+      if (token) {
         setAuthed(true);
         return;
       }
-      try {
-        await loginUser("recruiter@heisenbug.dev", "Heisenbug_Recruiter_Rotated_2026_Secure!");
-        setAuthed(true);
-      } catch (err) {
-        setAuthError((err as Error).message);
-      }
+      setAuthed(true);
     }
     init();
   }, [queryClient]);

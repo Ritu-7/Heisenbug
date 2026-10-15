@@ -5,31 +5,8 @@ import { requireAuth } from "../middleware/auth";
 const router = Router();
 
 /**
- * POST /api/auth/register
- * 410 Gone — Custom registration is disabled; users register via Clerk.
- */
-router.post("/register", (_req: Request, res: Response): void => {
-  res.status(410).json({
-    ok: false,
-    error: "This registration endpoint has been retired. Please register using Clerk at /login.",
-  });
-});
-
-/**
- * POST /api/auth/login
- * 410 Gone — Custom password login is disabled; users authenticate via Clerk.
- * Pure 410 Gone with no bypasses or exceptions of any kind.
- */
-router.post("/login", (_req: Request, res: Response): void => {
-  res.status(410).json({
-    ok: false,
-    error: "This login endpoint has been retired. Please sign in using Clerk at /login.",
-  });
-});
-
-/**
  * GET /api/auth/me
- * Returns current authenticated user profile.
+ * Returns current authenticated user profile and approval status from Clerk/Postgres mirror.
  */
 router.get("/me", requireAuth, async (req: Request, res: Response): Promise<void> => {
   const userId = req.user!.sub;

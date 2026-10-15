@@ -1,18 +1,17 @@
 import { test, expect } from '@playwright/test';
-import { getClerkSessionToken } from './clerk-auth';
+import { clerk } from '@clerk/testing/playwright';
 
 test.describe('Recruiter Flow', () => {
   test('sign in as recruiter, create assessment, invite candidate, candidate takes assessment with locked tabs and countdown, submits, recruiter sees SUBMITTED', async ({
     page,
     browser,
   }) => {
-    // 1. Obtain real Clerk session token for seeded recruiter
-    const token = await getClerkSessionToken('recruiter@heisenbug.dev');
-    expect(token).toBeTruthy();
-
-    await page.addInitScript((authToken) => {
-      localStorage.setItem('heisenbug_jwt_token', authToken);
-    }, token);
+    // 1. Perform genuine Clerk sign-in using Clerk's official testing utilities
+    await page.goto('/recruiter/login');
+    await clerk.signIn({
+      page,
+      emailAddress: 'recruiter@heisenbug.dev',
+    });
 
     // 2. Open recruiter dashboard
     await page.goto('/recruiter/dashboard');

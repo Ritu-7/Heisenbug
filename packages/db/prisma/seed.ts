@@ -1,6 +1,5 @@
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcryptjs";
 import fs from "fs";
 
 const prisma = new PrismaClient();
@@ -191,17 +190,15 @@ async function main() {
   const CANDIDATE_EMAIL = "alice@heisenbug.dev";
   const CANDIDATE_PASSWORD = "Heisenbug_Alice_Rotated_2026_Secure!";
   const CANDIDATE_ID = "user_3Kj03zYIzBuj6qJn3k1Q1wcHn7e";
-  const passwordHash = await bcrypt.hash(CANDIDATE_PASSWORD, 10);
 
   const candidate = await prisma.user.upsert({
     where: { email: CANDIDATE_EMAIL },
-    update: { id: CANDIDATE_ID, passwordHash },
+    update: { id: CANDIDATE_ID },
     create: {
       id: CANDIDATE_ID,
       email: CANDIDATE_EMAIL,
       name: "Alice Candidate",
       role: "CANDIDATE",
-      passwordHash,
     },
   });
   console.log(`  ✓ Candidate user: ${candidate.id} (${candidate.email})`);
@@ -210,17 +207,15 @@ async function main() {
   const ADMIN_EMAIL = "admin@heisenbug.dev";
   const ADMIN_PASSWORD = "Heisenbug_Admin_Rotated_2026_Secure!";
   const ADMIN_ID = "user_3Kj048oi2wO3sqP1mh97dCDOMtV";
-  const adminHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
 
   const admin = await prisma.user.upsert({
     where: { email: ADMIN_EMAIL },
-    update: { id: ADMIN_ID, passwordHash: adminHash },
+    update: { id: ADMIN_ID },
     create: {
       id: ADMIN_ID,
       email: ADMIN_EMAIL,
       name: "Heisenbug Admin",
       role: "ADMIN",
-      passwordHash: adminHash,
     },
   });
   console.log(`  ✓ Admin user:     ${admin.id} (${admin.email})`);
@@ -229,17 +224,16 @@ async function main() {
   const RECRUITER_EMAIL = "recruiter@heisenbug.dev";
   const RECRUITER_PASSWORD = "Heisenbug_Recruiter_Rotated_2026_Secure!";
   const RECRUITER_ID = "user_3Kj044VTw2XS8PQw3iHHckytYzj";
-  const recruiterHash = await bcrypt.hash(RECRUITER_PASSWORD, 10);
 
   const recruiter = await prisma.user.upsert({
     where: { email: RECRUITER_EMAIL },
-    update: { id: RECRUITER_ID, passwordHash: recruiterHash },
+    update: { id: RECRUITER_ID, approvalStatus: "APPROVED" },
     create: {
       id: RECRUITER_ID,
       email: RECRUITER_EMAIL,
       name: "Dana Recruiter",
       role: "RECRUITER",
-      passwordHash: recruiterHash,
+      approvalStatus: "APPROVED",
     },
   });
   console.log(`  ✓ Recruiter user: ${recruiter.id} (${recruiter.email})`);
@@ -248,17 +242,15 @@ async function main() {
   const AUTHOR_EMAIL = "author@heisenbug.dev";
   const AUTHOR_PASSWORD = "Heisenbug_Author_Rotated_2026_Secure!";
   const AUTHOR_ID = "user_3Kj04GrfHvi9ziOyM8dMwYk4PTX";
-  const authorHash = await bcrypt.hash(AUTHOR_PASSWORD, 10);
 
   const author = await prisma.user.upsert({
     where: { email: AUTHOR_EMAIL },
-    update: { id: AUTHOR_ID, passwordHash: authorHash },
+    update: { id: AUTHOR_ID },
     create: {
       id: AUTHOR_ID,
       email: AUTHOR_EMAIL,
       name: "Arthur Author",
       role: "AUTHOR",
-      passwordHash: authorHash,
     },
   });
   console.log(`  ✓ Author user:    ${author.id} (${author.email})`);

@@ -1,19 +1,18 @@
 import { test, expect } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getClerkSessionToken } from './clerk-auth';
+import { clerk } from '@clerk/testing/playwright';
 
 test.describe('Candidate Practice Flow', () => {
   test('sign in, view problem tabs, run partial starter code, submit reference solution for 100/100', async ({
     page,
   }) => {
-    // 1. Obtain real Clerk session token for seeded candidate
-    const token = await getClerkSessionToken('alice@heisenbug.dev');
-    expect(token).toBeTruthy();
-
-    await page.addInitScript((authToken) => {
-      localStorage.setItem('heisenbug_jwt_token', authToken);
-    }, token);
+    // 1. Perform genuine Clerk sign-in using Clerk's official testing utilities
+    await page.goto('/login');
+    await clerk.signIn({
+      page,
+      emailAddress: 'alice@heisenbug.dev',
+    });
 
     // 2. Open the catalogue
     await page.goto('/problems');

@@ -1,6 +1,6 @@
 # Heisenbug
 
-[![Validate Problems & Typecheck](https://github.com/Ritu-7/Heisenbug/actions/workflows/validate-problems.yml/badge.svg)](https://github.com/Ritu-7/Heisenbug/actions/workflows/validate-problems.yml)
+[![Validate Problems, Typecheck & E2E](https://github.com/Ritu-7/Heisenbug/actions/workflows/validate-problems.yml/badge.svg)](https://github.com/Ritu-7/Heisenbug/actions/workflows/validate-problems.yml)
 
 Heisenbug is a real-world backend debugging and system design evaluation platform.
 
@@ -9,6 +9,30 @@ Heisenbug is a real-world backend debugging and system design evaluation platfor
 - **Node.js**: v20 or higher
 - **npm**: v10 or higher
 - **Docker**: Docker Desktop / Docker Engine (must be running for containerized grading and PostgreSQL)
+
+---
+
+## Environment Configuration
+
+Authentication is managed via [Clerk](https://clerk.com). Passwords and session verification are delegated to Clerk, with user records synced to PostgreSQL via signed Svix webhooks.
+
+Configure the following variables in `apps/api/.env` and `apps/web/.env.local`:
+
+```env
+# Clerk Authentication
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="pk_test_..."
+CLERK_PUBLISHABLE_KEY="pk_test_..."
+CLERK_SECRET_KEY="sk_test_..."
+CLERK_WEBHOOK_SECRET="whsec_..."
+
+# Single-Use Assessment Invitation Tokens
+JWT_SECRET="<random-secure-secret>"
+
+# Database
+DATABASE_URL="postgresql://user:pass@host:5432/heisenbug?sslmode=require"
+```
+
+> **Note:** Legacy bcrypt password authentication and custom JWT login endpoints have been completely retired. Passwordless assessment candidate invitations use session-scoped tokens signed by `JWT_SECRET`.
 
 ---
 
@@ -27,7 +51,7 @@ cd Heisenbug
 npm install
 ```
 
-### 3. Start PostgreSQL container
+### 3. Start PostgreSQL container (if running locally)
 ```bash
 docker compose up -d
 ```
@@ -57,9 +81,8 @@ npm run dev
 ---
 
 ## Access & Test Credentials
-Authentication is managed via Clerk. For local testing with seeded accounts:
-- **Web App**: `http://localhost:3000`
-- **API Server**: `http://localhost:3001`
-- **Candidate User**: `alice@heisenbug.dev` / `Heisenbug_Alice_Rotated_2026_Secure!`
-- **Admin User**: `admin@heisenbug.dev` / `Heisenbug_Admin_Rotated_2026_Secure!`
-- **Recruiter User**: `recruiter@heisenbug.dev` / `Heisenbug_Recruiter_Rotated_2026_Secure!`
+
+Each portal is scoped to specific user roles:
+- **Candidate Portal** (`/login`): `alice@heisenbug.dev` / `Heisenbug_Alice_Rotated_2026_Secure!`
+- **Recruiter Portal** (`/recruiter/login`): `recruiter@heisenbug.dev` / `Heisenbug_Recruiter_Rotated_2026_Secure!`
+- **Administrator Console** (`/admin/login`): `admin@heisenbug.dev` / `Heisenbug_Admin_Rotated_2026_Secure!`

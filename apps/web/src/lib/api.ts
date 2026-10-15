@@ -37,26 +37,6 @@ export interface User {
   approvalStatus?: "NONE" | "PENDING" | "APPROVED" | "REJECTED";
 }
 
-export interface LoginResponse {
-  ok: boolean;
-  token: string;
-  user: User;
-  message?: string;
-}
-
-export interface RegisterParams {
-  email: string;
-  password: string;
-  name: string;
-  role?: "CANDIDATE" | "RECRUITER";
-}
-
-export interface GoogleAuthConfig {
-  ok: boolean;
-  configured: boolean;
-  redirectUri: string;
-}
-
 export interface ProblemVersionSummary {
   id: string;
   version: number;
@@ -189,35 +169,6 @@ async function apiFetch<T>(
 }
 
 // ── Query functions (used by TanStack Query) ───────────────────────────────
-
-/** Register a new user */
-export async function registerUser(params: RegisterParams): Promise<LoginResponse> {
-  const res = await apiFetch<LoginResponse>("/api/auth/register", {
-    method: "POST",
-    body: JSON.stringify(params),
-  });
-  if (res.token) {
-    setAuthToken(res.token);
-  }
-  return res;
-}
-
-/** Check if Google OAuth is configured */
-export async function fetchGoogleAuthConfig(): Promise<GoogleAuthConfig> {
-  return apiFetch<GoogleAuthConfig>("/api/auth/google/config");
-}
-
-/** Login with email & password */
-export async function loginUser(email: string, password: string): Promise<LoginResponse> {
-  const res = await apiFetch<LoginResponse>("/api/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
-  if (res.token) {
-    setAuthToken(res.token);
-  }
-  return res;
-}
 
 /** Get current user from /api/auth/me */
 export async function fetchCurrentUser(): Promise<User | null> {
