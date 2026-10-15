@@ -8,10 +8,11 @@ import {
   fetchUserSessions,
   fetchProblems,
   createSession,
-  loginUser,
   getAuthToken,
+  getActiveToken,
   setAuthToken,
   fetchCurrentUser,
+  requestRecruiterAccess,
   type Session,
   type Problem,
 } from "@/lib/api";
@@ -261,19 +262,14 @@ export default function CandidateDashboardPage() {
         }
       }
 
-      // 2. Check if already authenticated in localStorage
-      if (getAuthToken()) {
+      // 2. Check if already authenticated via Clerk or localStorage
+      const token = await getActiveToken();
+      if (token) {
         setAuthed(true);
         return;
       }
 
-      // 3. Fallback to demo profile if not logged in
-      try {
-        await loginUser("alice@heisenbug.dev", "Heisenbug_Alice_Rotated_2026_Secure!");
-        setAuthed(true);
-      } catch (err) {
-        setAuthError((err as Error).message);
-      }
+      setAuthed(true);
     }
     initAuth();
   }, [queryClient]);
@@ -282,6 +278,19 @@ export default function CandidateDashboardPage() {
     queryKey: ["me"],
     queryFn: fetchCurrentUser,
     enabled: authed,
+  });
+
+  const [recruiterMsg, setRecruiterMsg] = useState<string | null>(null);
+
+  const requestRecruiterMutation = useMutation({
+    mutationFn: requestRecruiterAccess,
+    onSuccess: (res) => {
+      setRecruiterMsg(res.message);
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+    onError: (err: any) => {
+      setRecruiterMsg(err.message || "Failed to request recruiter access");
+    },
   });
 
   const {
@@ -355,6 +364,38 @@ export default function CandidateDashboardPage() {
           </button>
         </div>
       </motion.div>
+
+      {/* Recruiter Request Status Banner */}
+      {currentUser?.role === "CANDIDATE" && (
+        <div className="p-4 rounded-lg border border-border bg-surface-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div>
+            <div className="font-semibold text-text">Hiring Engineering Talent?</div>
+            <div className="text-text-secondary mt-0.5">
+              {currentUser.approvalStatus === "PENDING" ? (
+                <span className="text-amber-500 font-medium">
+                  Your request for recruiter access is currently pending administrator approval.
+                </span>
+              ) : currentUser.approvalStatus === "REJECTED" ? (
+                <span className="text-fail">
+                  Your previous recruiter access request was rejected. You may request access again.
+                </span>
+              ) : (
+                <span>Request recruiter access to create custom candidate assessments and evaluate engineers.</span>
+              )}
+            </div>
+            {recruiterMsg && <div className="text-accent mt-1 font-mono">{recruiterMsg}</div>}
+          </div>
+          {currentUser.approvalStatus !== "PENDING" && (
+            <button
+              onClick={() => requestRecruiterMutation.mutate()}
+              disabled={requestRecruiterMutation.isPending}
+              className="px-3 py-1.5 rounded bg-accent text-white font-medium hover:bg-accent/90 disabled:opacity-50 shrink-0 transition-colors"
+            >
+              {requestRecruiterMutation.isPending ? "Requesting..." : "Request Recruiter Access"}
+            </button>
+          )}
+        </div>
+      )}
 
       {authError && (
         <div className="rounded-lg border border-fail/40 bg-fail-soft px-4 py-3 text-sm text-fail font-mono">

@@ -221,13 +221,12 @@ export async function loginUser(email: string, password: string): Promise<LoginR
 
 /** Get current user from /api/auth/me */
 export async function fetchCurrentUser(): Promise<User | null> {
-  const token = getAuthToken();
+  const token = await getActiveToken();
   if (!token) return null;
   try {
     const res = await apiFetch<{ ok: boolean; user: User }>("/api/auth/me");
     return res.user;
   } catch {
-    removeAuthToken();
     return null;
   }
 }
@@ -573,6 +572,47 @@ export async function publishProblemDraft(slug: string): Promise<{ ok: boolean; 
 export async function fetchAdminProblems(): Promise<Problem[]> {
   const res = await apiFetch<{ ok: boolean; data: Problem[] }>("/api/admin/problems");
   return res.data;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  role: "CANDIDATE" | "RECRUITER" | "AUTHOR" | "ADMIN";
+  requestedRole?: "RECRUITER" | null;
+  approvalStatus: "NONE" | "PENDING" | "APPROVED" | "REJECTED";
+  createdAt: string;
+  _count?: {
+    sessions: number;
+    assessments: number;
+  };
+}
+
+/** GET /api/admin/users (ADMIN) */
+export async function fetchAdminUsers(): Promise<AdminUser[]> {
+  const res = await apiFetch<{ ok: boolean; data: AdminUser[] }>("/api/admin/users");
+  return res.data;
+}
+
+/** POST /api/admin/users/:userId/approve-recruiter (ADMIN) */
+export async function approveRecruiter(userId: string): Promise<{ ok: boolean; message: string; user: User }> {
+  return apiFetch<{ ok: boolean; message: string; user: User }>(`/api/admin/users/${userId}/approve-recruiter`, {
+    method: "POST",
+  });
+}
+
+/** POST /api/admin/users/:userId/reject-recruiter (ADMIN) */
+export async function rejectRecruiter(userId: string): Promise<{ ok: boolean; message: string; user: User }> {
+  return apiFetch<{ ok: boolean; message: string; user: User }>(`/api/admin/users/${userId}/reject-recruiter`, {
+    method: "POST",
+  });
+}
+
+/** POST /api/users/me/request-recruiter-access */
+export async function requestRecruiterAccess(): Promise<{ ok: boolean; message: string; user: User }> {
+  return apiFetch<{ ok: boolean; message: string; user: User }>("/api/users/me/request-recruiter-access", {
+    method: "POST",
+  });
 }
 
 // ── Postmortem ──────────────────────────────────────────────────────────────

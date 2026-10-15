@@ -14,24 +14,25 @@ export function Nav() {
   const queryClient = useQueryClient();
   const { isSignedIn, user: clerkUser, isLoaded } = useUser();
 
-  // Fallback for legacy demo/seeded token in localStorage until Prompt 2 migrates recruiter/demo flows
-  const { data: legacyUser } = useQuery({
-    queryKey: ["me"],
+  const { data: dbUser } = useQuery({
+    queryKey: ["me", isSignedIn],
     queryFn: fetchCurrentUser,
-    enabled: isLoaded && !isSignedIn,
-    staleTime: 5 * 60 * 1000,
+    enabled: isLoaded,
+    staleTime: 10 * 1000,
   });
 
   const currentUser = isSignedIn && clerkUser
     ? {
         email: clerkUser.primaryEmailAddress?.emailAddress ?? "",
-        role: (clerkUser.publicMetadata?.role as string) || "CANDIDATE",
+        role: dbUser?.role || "CANDIDATE",
+        approvalStatus: dbUser?.approvalStatus,
         isClerk: true,
       }
-    : legacyUser
+    : dbUser
     ? {
-        email: legacyUser.email,
-        role: legacyUser.role,
+        email: dbUser.email,
+        role: dbUser.role,
+        approvalStatus: dbUser.approvalStatus,
         isClerk: false,
       }
     : null;
@@ -93,6 +94,9 @@ export function Nav() {
                 {currentUser.email}
                 {currentUser.role !== "CANDIDATE" && (
                   <span className="ml-1.5 text-[10px] text-accent font-semibold uppercase">{currentUser.role}</span>
+                )}
+                {currentUser.approvalStatus === "PENDING" && (
+                  <span className="ml-1.5 text-[10px] text-amber-500 font-semibold uppercase">PENDING RECRUITER</span>
                 )}
               </span>
               {currentUser.isClerk ? (

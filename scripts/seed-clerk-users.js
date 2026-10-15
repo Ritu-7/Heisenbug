@@ -55,7 +55,11 @@ async function seedClerkDemoUsers() {
         firstName: acc.firstName,
         lastName: acc.lastName,
         password: acc.password,
-        publicMetadata: { role: acc.role },
+        privateMetadata: {
+          role: acc.role,
+          approvalStatus: acc.role === 'RECRUITER' ? 'APPROVED' : 'NONE',
+          requestedRole: null,
+        },
       });
     } else {
       console.log(`+ Creating real Clerk user: ${acc.email}`);
@@ -65,7 +69,11 @@ async function seedClerkDemoUsers() {
         firstName: acc.firstName,
         lastName: acc.lastName,
         password: acc.password,
-        publicMetadata: { role: acc.role },
+        privateMetadata: {
+          role: acc.role,
+          approvalStatus: acc.role === 'RECRUITER' ? 'APPROVED' : 'NONE',
+          requestedRole: null,
+        },
       });
       console.log(`  Created ${acc.email} with Clerk ID: ${created.id}`);
     }

@@ -4,8 +4,9 @@ import path from "path";
 import { promisify } from "util";
 import { execFile } from "child_process";
 import { z } from "zod";
+import { clerkClient } from "@clerk/express";
 import { prisma } from "../lib/prisma";
-import { requireAuth, requireRole } from "../middleware/auth";
+import { requireAuth, requireRole, invalidateClerkUserCache } from "../middleware/auth";
 import { generateProblemDraft } from "../services/ai-author";
 
 const execFileAsync = promisify(execFile);
@@ -17,8 +18,8 @@ const DOCKER_ROOT = path.join(MONOREPO_ROOT, "infra", "docker");
 
 /**
  * GET /api/admin/users
- * Returns list of all registered users with their roles, creation dates,
- * and aggregate activity counts. Strictly ADMIN only.
+ * Returns list of all registered users with their roles, approval status,
+ * creation dates, and aggregate activity counts. Strictly ADMIN only.
  */
 router.get(
   "/users",
@@ -32,6 +33,8 @@ router.get(
         email: true,
         name: true,
         role: true,
+        requestedRole: true,
+        approvalStatus: true,
         createdAt: true,
         _count: {
           select: {
@@ -43,6 +46,116 @@ router.get(
     });
 
     res.json({ ok: true, data: users });
+  },
+);
+
+/**
+ * POST /api/admin/users/:userId/approve-recruiter
+ * Flips the user's Clerk privateMetadata to role: "RECRUITER", approvalStatus: "APPROVED"
+ * via backend SDK, invalidates the cache, and updates Postgres. Strictly ADMIN only.
+ */
+router.post(
+  "/users/:userId/approve-recruiter",
+  requireAuth,
+  requireRole("ADMIN"),
+  async (req: Request<{ userId: string }>, res: Response): Promise<void> => {
+    const { userId } = req.params;
+
+    try {
+      // 1. Update Clerk private metadata
+      await clerkClient.users.updateUserMetadata(userId, {
+        privateMetadata: {
+          role: "RECRUITER",
+          approvalStatus: "APPROVED",
+          requestedRole: null,
+        },
+      });
+
+      // 2. Invalidate cache
+      invalidateClerkUserCache(userId);
+
+      // 3. Update Postgres mirror
+      const user = await prisma.user.update({
+        where: { id: userId },
+        data: {
+          role: "RECRUITER",
+          approvalStatus: "APPROVED",
+          requestedRole: null,
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          requestedRole: true,
+          approvalStatus: true,
+          createdAt: true,
+        },
+      });
+
+      res.json({
+        ok: true,
+        message: `User ${userId} approved as RECRUITER`,
+        user,
+      });
+    } catch (err: any) {
+      console.error(`[admin] Failed to approve recruiter for ${userId}:`, err);
+      res.status(500).json({ ok: false, error: err.message || "Failed to approve recruiter" });
+    }
+  },
+);
+
+/**
+ * POST /api/admin/users/:userId/reject-recruiter
+ * Flips the user's Clerk privateMetadata to approvalStatus: "REJECTED"
+ * via backend SDK, invalidates the cache, and updates Postgres. Strictly ADMIN only.
+ */
+router.post(
+  "/users/:userId/reject-recruiter",
+  requireAuth,
+  requireRole("ADMIN"),
+  async (req: Request<{ userId: string }>, res: Response): Promise<void> => {
+    const { userId } = req.params;
+
+    try {
+      // 1. Update Clerk private metadata
+      await clerkClient.users.updateUserMetadata(userId, {
+        privateMetadata: {
+          approvalStatus: "REJECTED",
+          requestedRole: null,
+        },
+      });
+
+      // 2. Invalidate cache
+      invalidateClerkUserCache(userId);
+
+      // 3. Update Postgres mirror
+      const user = await prisma.user.update({
+        where: { id: userId },
+        data: {
+          approvalStatus: "REJECTED",
+          requestedRole: null,
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          requestedRole: true,
+          approvalStatus: true,
+          createdAt: true,
+        },
+      });
+
+      res.json({
+        ok: true,
+        message: `User ${userId} recruiter request rejected`,
+        user,
+      });
+    } catch (err: any) {
+      console.error(`[admin] Failed to reject recruiter for ${userId}:`, err);
+      res.status(500).json({ ok: false, error: err.message || "Failed to reject recruiter" });
+    }
   },
 );
 

@@ -1,7 +1,9 @@
 import { Router, Request, Response } from "express";
 import { Webhook } from "svix";
-import { Role } from "@prisma/client";
+import { Role, ApprovalStatus } from "@prisma/client";
+import { clerkClient } from "@clerk/express";
 import { prisma } from "../lib/prisma";
+import { invalidateClerkUserCache } from "../middleware/auth";
 
 const router = Router();
 
@@ -68,13 +70,38 @@ router.post("/clerk", async (req: Request, res: Response): Promise<void> => {
     const fullName = [data.first_name, data.last_name].filter(Boolean).join(" ").trim();
     const name = fullName || email.split("@")[0] || "User";
 
-    // Role lives in Clerk's user metadata
-    const rawRole =
-      data.public_metadata?.role ||
-      data.private_metadata?.role ||
-      data.unsafe_metadata?.role;
+    // Role, requestedRole, and approvalStatus live strictly in Clerk's private metadata
+    const privateMeta = data.private_metadata || {};
+    let rawRole = privateMeta.role;
+    let requestedRole = privateMeta.requestedRole ?? null;
+    let approvalStatus = privateMeta.approvalStatus ?? "NONE";
+
+    // New users default to role: "CANDIDATE", approvalStatus: "NONE" in private metadata
+    if (!rawRole) {
+      rawRole = "CANDIDATE";
+      try {
+        await clerkClient.users.updateUserMetadata(userId, {
+          privateMetadata: {
+            ...privateMeta,
+            role: "CANDIDATE",
+            approvalStatus: approvalStatus,
+            requestedRole: requestedRole,
+          },
+        });
+      } catch (clerkErr) {
+        console.error("[webhooks] Failed to initialize default privateMetadata on Clerk:", clerkErr);
+      }
+    }
+
     const validRoles: Role[] = ["CANDIDATE", "RECRUITER", "AUTHOR", "ADMIN"];
     const role: Role = validRoles.includes(rawRole as Role) ? (rawRole as Role) : "CANDIDATE";
+    const validApprovalStatuses: ApprovalStatus[] = ["NONE", "PENDING", "APPROVED", "REJECTED"];
+    const status: ApprovalStatus = validApprovalStatuses.includes(approvalStatus as ApprovalStatus)
+      ? (approvalStatus as ApprovalStatus)
+      : "NONE";
+    const reqRole: Role | null = validRoles.includes(requestedRole as Role)
+      ? (requestedRole as Role)
+      : null;
 
     try {
       const existingByEmail = email ? await prisma.user.findUnique({ where: { email } }) : null;
@@ -91,6 +118,8 @@ router.post("/clerk", async (req: Request, res: Response): Promise<void> => {
                 email: tempEmail,
                 name,
                 role,
+                requestedRole: reqRole,
+                approvalStatus: status,
               },
             });
             await tx.session.updateMany({ where: { userId: existingByEmail.id }, data: { userId: created.id } });
@@ -101,7 +130,16 @@ router.post("/clerk", async (req: Request, res: Response): Promise<void> => {
             await tx.session.updateMany({ where: { userId: existingByEmail.id }, data: { userId: target.id } });
             await tx.assessment.updateMany({ where: { recruiterId: existingByEmail.id }, data: { recruiterId: target.id } });
             await tx.user.delete({ where: { id: existingByEmail.id } });
-            await tx.user.update({ where: { id: target.id }, data: { email, name, role } });
+            await tx.user.update({
+              where: { id: target.id },
+              data: {
+                email,
+                name,
+                role,
+                requestedRole: reqRole,
+                approvalStatus: status,
+              },
+            });
           }
         });
       } else {
@@ -111,17 +149,22 @@ router.post("/clerk", async (req: Request, res: Response): Promise<void> => {
             email,
             name,
             role,
+            requestedRole: reqRole,
+            approvalStatus: status,
           },
           create: {
             id: userId,
             email,
             name,
             role,
+            requestedRole: reqRole,
+            approvalStatus: status,
           },
         });
       }
 
-      console.log(`[webhooks] Successfully synced user ${userId} (${email}, role=${role}) in Postgres`);
+      invalidateClerkUserCache(userId);
+      console.log(`[webhooks] Successfully synced user ${userId} (${email}, role=${role}, status=${status}) in Postgres`);
     } catch (dbErr: any) {
       console.error("[webhooks] Database error while syncing user:", dbErr);
       res.status(500).json({ ok: false, error: "Failed to sync user to database" });

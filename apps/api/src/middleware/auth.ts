@@ -21,6 +21,10 @@ declare global {
 // In-memory cache for Clerk user profile to avoid hitting Clerk API on every request
 const clerkUserCache = new Map<string, { user: any; expiresAt: number }>();
 
+export function invalidateClerkUserCache(userId: string): void {
+  clerkUserCache.delete(userId);
+}
+
 async function getClerkUser(userId: string) {
   const cached = clerkUserCache.get(userId);
   if (cached && cached.expiresAt > Date.now()) {
@@ -49,10 +53,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         clerkUser.emailAddresses?.[0];
       const email = emailObj?.emailAddress || "";
 
-      // Role source of truth: Clerk user publicMetadata
+      // Role source of truth: Clerk user privateMetadata (never unsafeMetadata or publicMetadata)
       const role =
-        (clerkUser.publicMetadata?.role as string) ||
-        (clerkUser.unsafeMetadata?.role as string) ||
+        (clerkUser.privateMetadata?.role as string) ||
         "CANDIDATE";
 
       req.user = {

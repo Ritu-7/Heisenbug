@@ -38,10 +38,10 @@ export default defineConfig({
       env: {
         DATABASE_URL:
           process.env.DATABASE_URL ||
-          'postgresql://heisenbug:heisenbug_secret@localhost:5432/heisenbug',
+          'postgresql://neondb_owner:npg_HREtBgIDO19u@ep-billowing-leaf-az3yxma3-pooler.c-3.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require',
         PORT: '3001',
         JWT_SECRET:
-          process.env.JWT_SECRET || 'heisenbug-dev-jwt-secret-change-in-prod-please',
+          process.env.JWT_SECRET || 'jfSKBkvJP9ynQM78g9OFLl55mC0vSm6la0KqQ9M+Oa+665famfaLfJG7gboUzmmi',
         CLERK_PUBLISHABLE_KEY:
           process.env.CLERK_PUBLISHABLE_KEY ||
           'pk_test_c3RhYmxlLWZhd24tMjc1LmNsZXJrLmFjY291bnRzLmRldiQ',

@@ -43,6 +43,7 @@ import runRouter from "./routes/run";
 import assessmentsRouter from "./routes/assessments";
 import invitationsRouter from "./routes/invitations";
 import adminRouter from "./routes/admin";
+import usersRouter from "./routes/users";
 import postmortemsRouter from "./routes/postmortems";
 import mentorRouter from "./routes/mentor";
 import aiCollabRouter from "./routes/ai-collab";
@@ -75,6 +76,7 @@ app.use(clerkMiddleware());
 
 // ── Routes ─────────────────────────────────────────────────────────────────
 app.use("/api/auth", authRouter);
+app.use("/api/users", usersRouter);
 app.use("/api/webhooks", webhooksRouter);
 app.use("/api/problems", problemsRouter);
 app.use("/api/sessions", sessionsRouter);
