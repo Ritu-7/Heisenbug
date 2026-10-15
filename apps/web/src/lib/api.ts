@@ -146,13 +146,29 @@ export interface ApiError {
   error: string;
 }
 
+export async function getActiveToken(): Promise<string | null> {
+  if (typeof window !== "undefined") {
+    try {
+      const clerk = (window as any).Clerk;
+      if (clerk?.session) {
+        const token = await clerk.session.getToken();
+        if (token) return token;
+      }
+    } catch {
+      // fallback to stored token
+    }
+    return localStorage.getItem(TOKEN_KEY);
+  }
+  return null;
+}
+
 // ── Fetch helpers ──────────────────────────────────────────────────────────
 
 async function apiFetch<T>(
   path: string,
   options?: RequestInit,
 ): Promise<T> {
-  const token = getAuthToken();
+  const token = await getActiveToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),

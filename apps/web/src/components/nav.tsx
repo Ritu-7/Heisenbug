@@ -1,33 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchCurrentUser, removeAuthToken } from "@/lib/api";
+import { useUser, UserButton } from "@clerk/nextjs";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export function Nav() {
   const pathname = usePathname();
-  const router = useRouter();
-  const queryClient = useQueryClient();
+  const { isSignedIn, user, isLoaded } = useUser();
 
-  const { data: user } = useQuery({
-    queryKey: ["me"],
-    queryFn: fetchCurrentUser,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const isRecruiter = user?.role === "RECRUITER" || user?.role === "ADMIN";
-  const isAdmin = user?.role === "ADMIN";
-
-  const handleLogout = async () => {
-    removeAuthToken();
-    await queryClient.invalidateQueries({ queryKey: ["me"] });
-    await queryClient.invalidateQueries({ queryKey: ["sessions"] });
-    await queryClient.invalidateQueries({ queryKey: ["assessments"] });
-    router.push("/login");
-  };
+  const role = (user?.publicMetadata?.role as string) || "CANDIDATE";
+  const isRecruiter = role === "RECRUITER" || role === "ADMIN";
+  const isAdmin = role === "ADMIN";
 
   const links = [
     { href: "/problems", label: "Catalogue" },
@@ -69,21 +54,15 @@ export function Nav() {
           {/* Theme toggle — visible on every page */}
           <ThemeToggle />
 
-          {user ? (
+          {isLoaded && isSignedIn && user ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-text-secondary font-mono bg-surface-2 px-2.5 py-1 rounded border border-border">
-                {user.email}
-                {user.role !== "CANDIDATE" && (
-                  <span className="ml-1.5 text-[10px] text-accent font-semibold uppercase">{user.role}</span>
+                {user.primaryEmailAddress?.emailAddress}
+                {role !== "CANDIDATE" && (
+                  <span className="ml-1.5 text-[10px] text-accent font-semibold uppercase">{role}</span>
                 )}
               </span>
-              <button
-                onClick={handleLogout}
-                className="text-xs font-mono text-text-secondary hover:text-fail px-2 py-1 rounded border border-border hover:border-fail/40 transition-colors"
-                title="Sign out"
-              >
-                Sign out
-              </button>
+              <UserButton afterSignOutUrl="/login" />
             </div>
           ) : (
             <Link

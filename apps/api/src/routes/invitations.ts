@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import rateLimit from "express-rate-limit";
 import { prisma } from "../lib/prisma";
-import { signToken } from "../lib/jwt";
+import jwt from "jsonwebtoken";
 
 const router = Router();
 
@@ -164,7 +164,11 @@ router.post(
     });
 
     // Issue a session-scoped JWT so the candidate can call Run/Submit
-    const token = signToken({ sub: user.id, email: user.email, role: user.role });
+    const token = jwt.sign(
+      { sub: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET || "fallback_secret",
+      { expiresIn: "7d" }
+    );
 
     res.status(201).json({
       ok: true,
