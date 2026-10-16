@@ -82,6 +82,17 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "heisenbug-api", ts: new Date().toISOString() });
 });
 
+app.get("/", (_req, res) => {
+  res.status(200).json({
+    ok: true,
+    service: "heisenbug-api",
+    endpoints: {
+      health: "/health",
+      problems: "/api/problems",
+    },
+  });
+});
+
 // Preserve raw buffer for webhook signature verification
 app.use(
   express.json({
