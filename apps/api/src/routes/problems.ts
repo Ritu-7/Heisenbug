@@ -1,5 +1,7 @@
 import { Router, Request, Response } from "express";
 import { prisma } from "../lib/prisma";
+import { getAuth } from "@clerk/express";
+import jwt from "jsonwebtoken";
 import fs from "fs";
 import path from "path";
 
@@ -52,8 +54,41 @@ function countChecksForSlug(slug: string): number {
  * GET /api/problems
  * Returns all problems with their latest PUBLISHED version joined in.
  * Only real rows from the DB — no padding.
+ *
+ * Optional auth: if a Clerk session or Bearer JWT is present, each problem
+ * gets a `solved` boolean (true = user has a passing submission for that
+ * problem). Unauthenticated requests get `solved: null`.
+ *
+ * `solveRate` = passing_submissions / total_submissions per problem,
+ * returned as a percentage (0–100, integer) when >= 5 total submissions
+ * exist across all users; otherwise null ("not enough data yet").
  */
-router.get("/", async (_req: Request, res: Response): Promise<void> => {
+router.get("/", async (req: Request, res: Response): Promise<void> => {
+  // ── Optional auth: try Clerk first, then legacy Bearer JWT ─────────────────
+  let authedUserId: string | null = null;
+  try {
+    const clerkAuth = getAuth(req);
+    if (clerkAuth?.userId) {
+      authedUserId = clerkAuth.userId;
+    } else {
+      const authHeader = req.headers.authorization;
+      if (authHeader?.startsWith("Bearer ")) {
+        const token = authHeader.slice(7);
+        const secret = process.env.JWT_SECRET;
+        if (secret) {
+          try {
+            const decoded = jwt.verify(token, secret) as any;
+            if (decoded?.sub) authedUserId = decoded.sub;
+          } catch {
+            // invalid token — treat as unauthenticated
+          }
+        }
+      }
+    }
+  } catch {
+    // optional auth failure — proceed as guest
+  }
+
   const problems = await prisma.problem.findMany({
     orderBy: { createdAt: "asc" },
     include: {
@@ -69,24 +104,73 @@ router.get("/", async (_req: Request, res: Response): Promise<void> => {
           editorialMd: false,
           solutionMd: false,
           descriptionMd: false,
+          // Include sessions with submissions for solve-rate + user solved status
+          sessions: {
+            select: {
+              userId: true,
+              submissions: {
+                select: { score: true },
+              },
+            },
+          },
         },
       },
     },
   });
 
-  const shaped = problems.map((p: (typeof problems)[number]) => ({
-    id: p.id,
-    slug: p.slug,
-    title: p.title,
-    track: p.track,
-    difficulty: p.difficulty,
-    estMinutes: p.estMinutes,
-    skills: p.skills,
-    stack: p.stack,
-    createdAt: p.createdAt,
-    currentVersion: p.versions[0] ?? null,
-    checkCount: countChecksForSlug(p.slug),
-  }));
+  const shaped = problems.map((p: (typeof problems)[number]) => {
+    const latestVersion = p.versions[0] ?? null;
+
+    // ── Aggregate real submission data across all sessions of this problem ─
+    let totalSubmissions = 0;
+    let passingSubmissions = 0;
+    let userHasPassing = false;
+
+    if (latestVersion) {
+      for (const session of latestVersion.sessions) {
+        for (const sub of session.submissions) {
+          totalSubmissions++;
+          if (sub.score >= 100) {
+            passingSubmissions++;
+            if (authedUserId && session.userId === authedUserId) {
+              userHasPassing = true;
+            }
+          }
+        }
+      }
+    }
+
+    // solveRate: only meaningful once >= 5 total submissions exist
+    const solveRate =
+      totalSubmissions >= 5
+        ? Math.round((passingSubmissions / totalSubmissions) * 100)
+        : null;
+
+    return {
+      id: p.id,
+      slug: p.slug,
+      title: p.title,
+      track: p.track,
+      difficulty: p.difficulty,
+      estMinutes: p.estMinutes,
+      skills: p.skills,
+      stack: p.stack,
+      createdAt: p.createdAt,
+      currentVersion: latestVersion
+        ? {
+            id: latestVersion.id,
+            version: latestVersion.version,
+            status: latestVersion.status,
+            createdAt: latestVersion.createdAt,
+          }
+        : null,
+      checkCount: countChecksForSlug(p.slug),
+      // null = unauthenticated (show neither ✓ nor ✗), false = not solved, true = solved
+      solved: authedUserId ? userHasPassing : null,
+      // null = < 5 submissions (not enough data yet)
+      solveRate,
+    };
+  });
 
   res.json({ ok: true, data: shaped });
 });

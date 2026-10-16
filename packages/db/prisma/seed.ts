@@ -489,6 +489,65 @@ async function main() {
   });
   console.log(`  ✓ Variant:        ${variant4.id}`);
 
+  // ── Seed problem 5: be-nplusone-001 ──────────────────────────────────────
+  const problem5 = await prisma.problem.upsert({
+    where: { slug: "be-nplusone-001" },
+    update: {},
+    create: {
+      slug: "be-nplusone-001",
+      title: "Optimize N+1 Query in Order History API",
+      track: "backend",
+      difficulty: "medium",
+      estMinutes: 25,
+      skills: ["n-plus-one", "query-optimization", "batch-queries"],
+      stack: "node-express-postgres",
+    },
+  });
+  console.log(`  ✓ Problem: ${problem5.id} (${problem5.slug})`);
+
+  const descriptionMdNplusone = fs.readFileSync(
+    require("path").join(__dirname, "../../problems/be-nplusone-001/DESCRIPTION.md"),
+    "utf-8"
+  );
+
+  const existingVersion5 = await prisma.problemVersion.findUnique({
+    where: { problemId_version: { problemId: problem5.id, version: 1 } },
+  });
+
+  let version5;
+  if (existingVersion5) {
+    version5 = await prisma.problemVersion.update({
+      where: { id: existingVersion5.id },
+      data: { status: "PUBLISHED", descriptionMd: descriptionMdNplusone },
+    });
+  } else {
+    version5 = await prisma.problemVersion.create({
+      data: {
+        problemId: problem5.id,
+        version: 1,
+        status: "PUBLISHED",
+        descriptionMd: descriptionMdNplusone,
+        editorialMd: "",
+        solutionMd: "",
+      },
+    });
+  }
+  console.log(`  ✓ ProblemVersion: ${version5.id} (v${version5.version}, ${version5.status})`);
+
+  const variantId5 = `${version5.id}_default`;
+  const variant5 = await prisma.variant.upsert({
+    where: { id: variantId5 },
+    update: {},
+    create: {
+      id: variantId5,
+      versionId: version5.id,
+      paramsJson: {
+        variant: "default",
+      },
+    },
+  });
+  console.log(`  ✓ Variant:        ${variant5.id}`);
+
   console.log("\n✅ Seed complete.");
   console.log("\n📋 Test credentials:");
   console.log(`   Candidate: ${CANDIDATE_EMAIL} / ${CANDIDATE_PASSWORD}`);

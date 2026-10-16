@@ -56,6 +56,10 @@ export interface Problem {
   createdAt: string;
   currentVersion: ProblemVersionSummary | null;
   checkCount: number;
+  /** null = unauthenticated guest; false = authenticated, not solved; true = solved (passing submission) */
+  solved: boolean | null;
+  /** null = < 5 submissions (not enough data); 0–100 integer percentage when enough data exists */
+  solveRate: number | null;
 }
 
 export interface Submission {
