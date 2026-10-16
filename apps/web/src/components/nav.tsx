@@ -57,7 +57,7 @@ export function Nav() {
 
   return (
     <header className="border-b border-border bg-surface sticky top-0 z-50">
-      <div className="mx-auto max-w-5xl px-4 h-14 flex items-center justify-between">
+      <div className="mx-auto max-w-[1440px] px-4 sm:px-6 h-14 flex items-center justify-between">
         <div className="flex items-center gap-8">
           <Link href="/" className="font-serif text-xl font-bold tracking-tight text-accent flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-accent inline-block" />
