@@ -48,6 +48,7 @@ import postmortemsRouter from "./routes/postmortems";
 import mentorRouter from "./routes/mentor";
 import aiCollabRouter from "./routes/ai-collab";
 import forkRouter from "./routes/fork";
+import { Prisma } from "@prisma/client";
 import { prisma } from "./lib/prisma";
 
 const app = express();
@@ -129,6 +130,40 @@ app.use((_req, res) => {
 // ── Global error handler ───────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  if (res.headersSent) {
+    return _next(err);
+  }
+
+  // Handle Prisma known request errors safely
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    if (err.code === "P2003") {
+      res.status(409).json({
+        ok: false,
+        error: "Database foreign key constraint violation: a referenced record was not found.",
+        code: "P2003",
+        field: err.meta?.field_name,
+      });
+      return;
+    }
+    if (err.code === "P2002") {
+      res.status(409).json({
+        ok: false,
+        error: "Database unique constraint violation.",
+        code: "P2002",
+        target: err.meta?.target,
+      });
+      return;
+    }
+    if (err.code === "P2025") {
+      res.status(404).json({
+        ok: false,
+        error: "Requested database record was not found.",
+        code: "P2025",
+      });
+      return;
+    }
+  }
+
   // Prefer statusCode (body-parser, http-errors) then status, then 500
   const status: number = err.statusCode ?? err.status ?? 500;
   const isClientError = status >= 400 && status < 500;
@@ -143,6 +178,16 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     ok: false,
     error: isClientError ? (err.message ?? "Bad request") : "Internal server error",
   });
+});
+
+// ── Process-level error handling ───────────────────────────────────────────
+// Prevent uncaught errors or rejected promises in async handlers from abruptly crashing the server process
+process.on("unhandledRejection", (reason: any) => {
+  console.error("[process] Unhandled Promise Rejection:", reason);
+});
+
+process.on("uncaughtException", (error: Error) => {
+  console.error("[process] Uncaught Exception:", error);
 });
 
 // ── Start ──────────────────────────────────────────────────────────────────

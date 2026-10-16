@@ -54,9 +54,29 @@ export const prisma: PrismaClient =
     errorFormat: process.env.NODE_ENV === "production" ? "minimal" : "pretty",
   });
 
-// Surface connection-pool errors in Render's log stream without crashing
+function isConnectionError(msg: string): boolean {
+  const lower = (msg || "").toLowerCase();
+  return (
+    lower.includes("closed") ||
+    lower.includes("connection") ||
+    lower.includes("timeout") ||
+    lower.includes("timed out") ||
+    lower.includes("econnreset") ||
+    lower.includes("econnrefused") ||
+    lower.includes("p1001") ||
+    lower.includes("p1002") ||
+    lower.includes("p1008") ||
+    lower.includes("p1017")
+  );
+}
+
+// Surface connection-pool errors vs data/query errors accurately without misleading labels
 (prisma as any).$on?.("error", (e: { message: string; target: string }) => {
-  console.error("[prisma] pool error — likely a stale connection closed by Postgres:", e.message);
+  if (isConnectionError(e.message)) {
+    console.error("[prisma] pool/connection error (idle connection closed by Postgres):", e.message);
+  } else {
+    console.error("[prisma] database error:", e.message);
+  }
 });
 
 if (process.env.NODE_ENV !== "production") {
