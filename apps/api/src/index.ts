@@ -55,7 +55,27 @@ const PORT = process.env.PORT ?? 3001;
 
 // ── Global middleware ──────────────────────────────────────────────────────
 app.set("trust proxy", 1);
-app.use(cors({ origin: process.env.CORS_ORIGIN ?? "*" }));
+
+// CORS — allow the configured frontend origin(s).
+// CORS_ORIGIN can be:
+//   • a single origin:  "https://heisenbug.vercel.app"
+//   • comma-separated:  "https://heisenbug.vercel.app,https://heisenbug-git-main-xyz.vercel.app"
+//   • "*" (dev only — do not use in production with credentials)
+//
+// On Render, set CORS_ORIGIN to the exact Vercel production URL.
+// Locally, leave it unset (falls back to "*") or set "http://localhost:3000".
+const rawCorsOrigin = process.env.CORS_ORIGIN ?? "*";
+const allowedOrigins =
+  rawCorsOrigin === "*"
+    ? "*"
+    : rawCorsOrigin.split(",").map((o) => o.trim()).filter(Boolean);
+
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: allowedOrigins !== "*",
+  }),
+);
 
 // Fast liveness probe before any auth/middleware
 app.get("/health", (_req, res) => {

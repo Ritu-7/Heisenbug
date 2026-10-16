@@ -22,6 +22,7 @@ import {
   getActiveToken,
   fetchSessionSubmissions,
   fetchProblemNearMisses,
+  apiFetch,
   type Session,
   type SessionEvent,
   type RunResult,
@@ -71,7 +72,8 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 const AUTOSAVE_DELAY_MS = 2000;
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+// API_BASE is intentionally NOT redeclared here — use apiFetch() from @/lib/api
+// which reads NEXT_PUBLIC_API_URL and automatically attaches the Clerk Bearer token.
 
 // ── Sub-components ─────────────────────────────────────────────────────────
 
@@ -625,10 +627,8 @@ function WorkspaceContent({ slug }: { slug: string }) {
   const { data: problem, isLoading: problemLoading, isError: problemError } = useQuery({
     queryKey: ["problem", slug],
     queryFn: async () => {
-      const res = await fetch(`${API_BASE}/api/problems/${slug}`);
-      if (!res.ok) throw new Error("Problem not found");
-      const data = await res.json();
-      return data.data as ProblemFull;
+      const data = await apiFetch<{ ok: boolean; data: ProblemFull }>(`/api/problems/${slug}`);
+      return data.data;
     },
   });
 

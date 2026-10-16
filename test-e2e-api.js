@@ -1,8 +1,39 @@
 // test-e2e-api.js — Runs real API E2E checks for both problems
+//
+// NOTE: POST /api/auth/login no longer exists (returns 410 Gone).
+// This app uses Clerk for browser authentication. For local/CI API testing we
+// use the legacy JWT fallback path in requireAuth(), which accepts a JWT signed
+// with JWT_SECRET. This path exists for the assessment-invite flow and seeded
+// demo accounts.
+//
+// Requirements:
+//   JWT_SECRET env var must be set (same value as the API server).
+//   DATABASE_URL env var must be set (to look up Alice's user ID).
+//   API must be running on 127.0.0.1:3001.
+
 const fs = require('fs');
 const path = require('path');
+const jwt = require('jsonwebtoken');
+const { PrismaClient } = require('@prisma/client');
 
 const API_BASE = 'http://127.0.0.1:3001/api';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('ERROR: JWT_SECRET environment variable is required.');
+  process.exit(1);
+}
+
+const prisma = new PrismaClient();
+
+async function mintToken(email) {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) throw new Error(`Seeded user ${email} not found in database`);
+  return jwt.sign(
+    { sub: user.id, email: user.email, role: user.role },
+    JWT_SECRET,
+    { expiresIn: '1h' }
+  );
+}
 
 async function request(url, options = {}) {
   const res = await fetch(url, options);
@@ -14,14 +45,10 @@ async function request(url, options = {}) {
 }
 
 async function main() {
-  console.log('--- 1. Login ---');
-  const loginRes = await request(`${API_BASE}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'alice@heisenbug.dev', password: 'Heisenbug_Alice_Rotated_2026_Secure!' }),
-  });
-  const token = loginRes.token;
-  console.log('✓ Logged in as alice@heisenbug.dev');
+  console.log('--- 1. Mint JWT for alice@heisenbug.dev (seeded demo account) ---');
+  const token = await mintToken('alice@heisenbug.dev');
+  console.log('✓ JWT minted for alice@heisenbug.dev');
+
 
   const authHeaders = {
     'Authorization': `Bearer ${token}`,
@@ -126,9 +153,11 @@ async function main() {
   }
 
   console.log('\n✅ E2E API Verification Complete.');
+  await prisma.$disconnect();
 }
 
-main().catch(err => {
+main().catch(async err => {
   console.error('Fatal E2E error:', err);
+  await prisma.$disconnect();
   process.exit(1);
 });
