@@ -97,9 +97,21 @@ app.use((_req, res) => {
 
 // ── Global error handler ───────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error("[api] unhandled error:", err);
-  res.status(500).json({ ok: false, error: "Internal server error" });
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  // Prefer statusCode (body-parser, http-errors) then status, then 500
+  const status: number = err.statusCode ?? err.status ?? 500;
+  const isClientError = status >= 400 && status < 500;
+
+  // For client errors, expose the library's own message (e.g. "Unexpected token …");
+  // for server errors, hide internals and log the full error.
+  if (!isClientError) {
+    console.error("[api] unhandled error:", err);
+  }
+
+  res.status(status).json({
+    ok: false,
+    error: isClientError ? (err.message ?? "Bad request") : "Internal server error",
+  });
 });
 
 // ── Start ──────────────────────────────────────────────────────────────────
