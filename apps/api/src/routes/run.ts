@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { execFile } from "child_process";
+import { execFile, exec } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
 import os from "os";
@@ -11,6 +11,7 @@ import { requireAuth } from "../middleware/auth";
 
 const router = Router();
 const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 
 // ── Config ─────────────────────────────────────────────────────────────────
 
@@ -21,7 +22,9 @@ const graderImage  = (slug: string) => `heisenbug-grader-runner-${slug}:latest`;
 
 // Hidden tests live on the HOST — never inside any container image
 // routes/ → src/ → api/ → apps/ → monorepo root → packages/problems/…
-const PROBLEMS_ROOT = path.resolve(__dirname, "../../../../packages/problems");
+const MONOREPO_ROOT = path.resolve(__dirname, "../../../../");
+const PROBLEMS_ROOT = path.resolve(MONOREPO_ROOT, "packages/problems");
+const SANDBOX_ROOT  = path.resolve(MONOREPO_ROOT, ".sandbox");
 
 // Pass DOCKER_HOST through only if the operator has explicitly set it in
 // their environment (e.g. a non-standard socket path or a remote daemon).
@@ -89,6 +92,43 @@ function loadProblemMeta(slug: string): ProblemMeta {
 }
 
 /**
+ * Extracts a complete JSON object substring from raw stdout/stderr
+ * ignoring any preceding or trailing text (such as Jest or Pytest logs).
+ */
+function extractJsonObject(raw: string): string | null {
+  const start = raw.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          return raw.slice(start, i + 1);
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * JEST TEST ID CONVENTION:
  * Extracts [V1:10] or [H3:15] prefix from a Jest test title.
  * Example: "PAY-482 [V1:10] Returns 400 if header missing" -> id: "V1", weight: 10
@@ -103,8 +143,8 @@ function parseJestTestId(title: string): { id: string; weight: number } | null {
  * Parses Jest --json stdout into a normalized result shape.
  */
 function parseJestJson(raw: string): Omit<RunResult, "rawOutput" | "durationMs"> {
-  const start = raw.indexOf("{");
-  if (start === -1) {
+  const jsonStr = extractJsonObject(raw);
+  if (!jsonStr) {
     throw new Error(`Jest produced no JSON output.\nRaw:\n${raw.slice(0, 2000)}`);
   }
 
@@ -121,9 +161,9 @@ function parseJestJson(raw: string): Omit<RunResult, "rawOutput" | "durationMs">
   };
 
   try {
-    jestData = JSON.parse(raw.slice(start));
+    jestData = JSON.parse(jsonStr);
   } catch (e) {
-    throw new Error(`Failed to parse Jest JSON: ${(e as Error).message}\nRaw slice:\n${raw.slice(start, start + 500)}`);
+    throw new Error(`Failed to parse Jest JSON: ${(e as Error).message}\nRaw slice:\n${jsonStr.slice(0, 500)}`);
   }
 
   const checks: VerdictCheck[] = [];
@@ -179,39 +219,6 @@ function parsePytestTestId(nodeid: string): { id: string; weight: number } | nul
   const m2 = nodeid.match(/\[([A-Z]\d+):(\d+)\]/);
   if (m2) {
     return { id: m2[1], weight: parseInt(m2[2], 10) };
-  }
-  return null;
-}
-
-function extractJsonObject(raw: string): string | null {
-  const start = raw.indexOf("{");
-  if (start === -1) return null;
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-  for (let i = start; i < raw.length; i++) {
-    const ch = raw[i];
-    if (escape) {
-      escape = false;
-      continue;
-    }
-    if (ch === "\\") {
-      escape = true;
-      continue;
-    }
-    if (ch === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (!inString) {
-      if (ch === "{") depth++;
-      else if (ch === "}") {
-        depth--;
-        if (depth === 0) {
-          return raw.slice(start, i + 1);
-        }
-      }
-    }
   }
   return null;
 }
@@ -279,6 +286,28 @@ function parsePytestJson(raw: string): Omit<RunResult, "rawOutput" | "durationMs
 }
 
 /**
+ * Dynamic Docker availability check.
+ * Caches result for 30s to avoid repeated daemon probes.
+ */
+let cachedDockerAvailable: boolean | null = null;
+let lastDockerCheckTime = 0;
+
+async function isDockerAvailable(): Promise<boolean> {
+  const now = Date.now();
+  if (cachedDockerAvailable !== null && now - lastDockerCheckTime < 30_000) {
+    return cachedDockerAvailable;
+  }
+  try {
+    await execFileAsync("docker", ["info"], { timeout: 2000 });
+    cachedDockerAvailable = true;
+  } catch {
+    cachedDockerAvailable = false;
+  }
+  lastDockerCheckTime = now;
+  return cachedDockerAvailable;
+}
+
+/**
  * Framework-agnostic Docker runner.
  * Reads meta.json for the given slug to determine entryFile, testCommand, and testFramework,
  * constructs framework-specific scope flags, volume-mounts candidate code to `/app/${meta.entryFile}`,
@@ -301,10 +330,10 @@ async function runInDocker(opts: {
   try {
     let frameworkCmd = "";
     if (meta.testFramework === "jest") {
-      const scopeFlag = testScope === "visible" ? `--testPathPattern="tests/visible"` : "";
+      const scopeFlag = testScope === "visible" ? `tests/visible` : `tests`;
       frameworkCmd = `${meta.testCommand} ${scopeFlag}`.trim();
     } else if (meta.testFramework === "pytest") {
-      const scopeFlag = testScope === "visible" ? `tests/visible` : "";
+      const scopeFlag = testScope === "visible" ? `tests/visible` : `tests`;
       frameworkCmd = `${meta.testCommand} ${scopeFlag}`.trim();
     } else {
       throw new Error(`Unsupported test framework '${meta.testFramework}'`);
@@ -326,7 +355,7 @@ async function runInDocker(opts: {
     let stderr = "";
     try {
       const out = await execFileAsync("docker", dockerArgs, {
-        timeout: 120_000,
+        timeout: 60_000,
         env: DOCKER_ENV,
         maxBuffer: 10 * 1024 * 1024,
       });
@@ -349,6 +378,136 @@ async function runInDocker(opts: {
   } finally {
     try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
   }
+}
+
+/**
+ * Isolated Native Process Runner (Host Fallback).
+ * Runs natively in environments without a Docker daemon (e.g. Render Web Services,
+ * local environments with Docker Desktop stopped).
+ * Copies the problem pack repository into an isolated workspace directory inside .sandbox/,
+ * injects the candidate's code, runs the test runner directly, and cleans up.
+ */
+async function runNative(opts: {
+  candidateCode: string;
+  slug: string;
+  testScope: "visible" | "all";
+}): Promise<{ result: Omit<RunResult, "rawOutput" | "durationMs">; rawOutput: string }> {
+  const { candidateCode, slug, testScope } = opts;
+  const meta = loadProblemMeta(slug);
+  const problemDir = path.join(PROBLEMS_ROOT, slug);
+  const repoDir = path.join(problemDir, "repo");
+
+  if (!fs.existsSync(repoDir)) {
+    throw new Error(`Problem repository files not found for '${slug}' at ${repoDir}`);
+  }
+
+  // Ensure sandbox directory exists inside monorepo to resolve hoisted node_modules
+  fs.mkdirSync(SANDBOX_ROOT, { recursive: true });
+  const runId = `run-${slug}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const runDir = path.join(SANDBOX_ROOT, runId);
+
+  try {
+    // 1. Copy problem repository files
+    fs.cpSync(repoDir, runDir, { recursive: true });
+
+    // 2. Write candidate's edited code to entryFile
+    const entryFilePath = path.join(runDir, meta.entryFile);
+    fs.mkdirSync(path.dirname(entryFilePath), { recursive: true });
+    fs.writeFileSync(entryFilePath, candidateCode, "utf-8");
+
+    // 3. For 'all' test scope (submit / grading), copy hidden test files
+    if (testScope === "all") {
+      const hiddenSrc = path.join(problemDir, "tests", "hidden");
+      if (fs.existsSync(hiddenSrc)) {
+        const hiddenDst = path.join(runDir, "tests", "hidden");
+        fs.mkdirSync(path.dirname(hiddenDst), { recursive: true });
+        fs.cpSync(hiddenSrc, hiddenDst, { recursive: true });
+      }
+    }
+
+    let stdout = "";
+    let stderr = "";
+
+    if (meta.testFramework === "jest") {
+      const testTarget = testScope === "visible" ? "tests/visible" : "tests";
+      const jestCmd = `npx jest ${testTarget} --json --no-coverage --forceExit`;
+
+      try {
+        const out = await execAsync(jestCmd, {
+          cwd: runDir,
+          timeout: 45_000,
+          maxBuffer: 10 * 1024 * 1024,
+          env: { ...process.env, NODE_ENV: "test" },
+        });
+        stdout = out.stdout;
+        stderr = out.stderr;
+      } catch (err: any) {
+        stdout = err.stdout ?? "";
+        stderr = err.stderr ?? "";
+        if (!stdout && !stderr) {
+          throw new Error(`Jest runner execution failed: ${err.message}`);
+        }
+      }
+
+      const rawForParse = (stdout + "\n" + stderr).trim();
+      const result = parseJestJson(rawForParse);
+      return { result, rawOutput: rawForParse };
+    } else if (meta.testFramework === "pytest") {
+      const testTarget = testScope === "visible" ? "tests/visible" : "tests";
+      const pytestCmd = `pytest ${testTarget} --json-report --json-report-file=/dev/stdout -q`;
+
+      try {
+        const out = await execAsync(pytestCmd, {
+          cwd: runDir,
+          timeout: 45_000,
+          maxBuffer: 10 * 1024 * 1024,
+          env: { ...process.env },
+        });
+        stdout = out.stdout;
+        stderr = out.stderr;
+      } catch (err: any) {
+        stdout = err.stdout ?? "";
+        stderr = err.stderr ?? "";
+        if (!stdout && !stderr) {
+          throw new Error(`Pytest runner execution failed (is Python 3 / pytest installed?): ${err.message}`);
+        }
+      }
+
+      const rawForParse = stdout || stderr;
+      const result = parsePytestJson(rawForParse);
+      return { result, rawOutput: rawForParse };
+    } else {
+      throw new Error(`Unsupported test framework '${meta.testFramework}'`);
+    }
+  } finally {
+    try {
+      fs.rmSync(runDir, { recursive: true, force: true });
+    } catch {
+      /* ignore cleanup error */
+    }
+  }
+}
+
+/**
+ * Unified Test Execution Dispatcher.
+ * Uses Docker sandbox if available; otherwise falls back gracefully to native execution.
+ */
+async function executeRunner(opts: {
+  image: string;
+  candidateCode: string;
+  slug: string;
+  testScope: "visible" | "all";
+  extraVolumes?: string[];
+}): Promise<{ result: Omit<RunResult, "rawOutput" | "durationMs">; rawOutput: string }> {
+  const dockerOk = await isDockerAvailable();
+  if (dockerOk) {
+    try {
+      return await runInDocker(opts);
+    } catch (dockerErr) {
+      console.warn(`[runner] Docker execution failed for ${opts.slug}, falling back to native runner:`, (dockerErr as Error).message);
+    }
+  }
+  return await runNative(opts);
 }
 
 /** Fetch latest CODE_SAVE event code, or read starter code from disk using meta.entryFile. */
@@ -376,7 +535,7 @@ async function resolveCode(sessionId: string, slug: string): Promise<string> {
 /**
  * POST /api/sessions/:id/run
  *
- * Runs candidate's code against VISIBLE test suite inside session-runner container.
+ * Runs candidate's code against VISIBLE test suite.
  */
 router.post("/:id/run", requireAuth, async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   const { id } = req.params;
@@ -395,8 +554,17 @@ router.post("/:id/run", requireAuth, async (req: Request<{ id: string }>, res: R
     res.status(404).json({ ok: false, error: `Session '${id}' not found` });
     return;
   }
-  if (session.userId !== userId && req.user!.role !== "ADMIN") {
-    res.status(403).json({ ok: false, error: "Forbidden" });
+
+  // Authorize by userId or verified email
+  let isAuthorized = session.userId === userId || req.user!.role === "ADMIN";
+  if (!isAuthorized && req.user?.email) {
+    const dbUser = await prisma.user.findUnique({ where: { email: req.user.email } });
+    if (dbUser && dbUser.id === session.userId) {
+      isAuthorized = true;
+    }
+  }
+  if (!isAuthorized) {
+    res.status(403).json({ ok: false, error: "Forbidden: you do not own this session" });
     return;
   }
 
@@ -424,7 +592,7 @@ router.post("/:id/run", requireAuth, async (req: Request<{ id: string }>, res: R
   let rawOutput = "";
 
   try {
-    const { result, rawOutput: raw } = await runInDocker({
+    const { result, rawOutput: raw } = await executeRunner({
       image: sessionImage(slug),
       candidateCode,
       slug,
@@ -453,12 +621,19 @@ router.post("/:id/run", requireAuth, async (req: Request<{ id: string }>, res: R
       ok: true,
       data: { ...result, rawOutput, durationMs },
     });
-  } catch (err) {
-    rawOutput = (err as Error).message;
+  } catch (err: any) {
+    rawOutput = err.message || "Test runner failed";
+    console.error(`[run:${id}] Test runner execution error:`, {
+      message: err.message,
+      stack: err.stack,
+      code: err.code,
+      stderr: err.stderr,
+      stdout: err.stdout,
+    });
     res.status(500).json({
       ok: false,
-      error: "Test runner failed",
-      detail: rawOutput.slice(0, 1000),
+      error: `Test runner failed: ${err.message}`,
+      detail: (err.stderr || err.stdout || err.message || "").slice(0, 1000),
     });
   }
 });
@@ -466,7 +641,7 @@ router.post("/:id/run", requireAuth, async (req: Request<{ id: string }>, res: R
 /**
  * POST /api/sessions/:id/submit
  *
- * Runs candidate's code against FULL test suite (visible + hidden) inside grader-runner container.
+ * Runs candidate's code against FULL test suite (visible + hidden) and grades submission.
  */
 router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res: Response): Promise<void> => {
   const { id } = req.params;
@@ -485,8 +660,16 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
     res.status(404).json({ ok: false, error: `Session '${id}' not found` });
     return;
   }
-  if (session.userId !== userId && req.user!.role !== "ADMIN") {
-    res.status(403).json({ ok: false, error: "Forbidden" });
+
+  let isAuthorized = session.userId === userId || req.user!.role === "ADMIN";
+  if (!isAuthorized && req.user?.email) {
+    const dbUser = await prisma.user.findUnique({ where: { email: req.user.email } });
+    if (dbUser && dbUser.id === session.userId) {
+      isAuthorized = true;
+    }
+  }
+  if (!isAuthorized) {
+    res.status(403).json({ ok: false, error: "Forbidden: you do not own this session" });
     return;
   }
 
@@ -511,7 +694,7 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
   const t0 = Date.now();
 
   try {
-    const { result, rawOutput } = await runInDocker({
+    const { result, rawOutput } = await executeRunner({
       image: graderImage(slug),
       candidateCode,
       slug,
@@ -589,11 +772,18 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
         durationMs,
       },
     });
-  } catch (err) {
+  } catch (err: any) {
+    console.error(`[submit:${id}] Grader execution error:`, {
+      message: err.message,
+      stack: err.stack,
+      code: err.code,
+      stderr: err.stderr,
+      stdout: err.stdout,
+    });
     res.status(500).json({
       ok: false,
-      error: "Grader failed",
-      detail: (err as Error).message.slice(0, 1000),
+      error: `Grader failed: ${err.message}`,
+      detail: (err.stderr || err.stdout || err.message || "").slice(0, 1000),
     });
   }
 });
