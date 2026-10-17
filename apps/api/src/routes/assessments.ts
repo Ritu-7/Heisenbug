@@ -44,6 +44,19 @@ router.post(
       return;
     }
 
+    // Ensure recruiter exists in users table to prevent FK constraint violation
+    await prisma.user.upsert({
+      where: { id: req.user!.sub },
+      update: {},
+      create: {
+        id: req.user!.sub,
+        email: req.user!.email,
+        name: req.user!.email.split("@")[0] || "Recruiter",
+        role: req.user!.role as any,
+        approvalStatus: "APPROVED",
+      },
+    });
+
     const assessment = await prisma.assessment.create({
       data: {
         recruiterId: req.user!.sub,

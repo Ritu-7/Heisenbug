@@ -189,7 +189,7 @@ async function main() {
   // ── Seed test candidate user ─────────────────────────────────────────────
   const CANDIDATE_EMAIL = "alice@heisenbug.dev";
   const CANDIDATE_PASSWORD = "Heisenbug_Alice_Rotated_2026_Secure!";
-  const CANDIDATE_ID = "user_3Kj03zYIzBuj6qJn3k1Q1wcHn7e";
+  const CANDIDATE_ID = "user_3KoNtVjDJgOKQbNli5tWQL0daQp";
 
   const candidate = await prisma.user.upsert({
     where: { email: CANDIDATE_EMAIL },
@@ -206,7 +206,7 @@ async function main() {
   // ── Seed admin user ─────────────────────────────────────────────────────
   const ADMIN_EMAIL = "admin@heisenbug.dev";
   const ADMIN_PASSWORD = "Heisenbug_Admin_Rotated_2026_Secure!";
-  const ADMIN_ID = "user_3Kj048oi2wO3sqP1mh97dCDOMtV";
+  const ADMIN_ID = "user_3KoNw3ZFNOwSbGNP5YOl3753GWz";
 
   const admin = await prisma.user.upsert({
     where: { email: ADMIN_EMAIL },
@@ -223,7 +223,7 @@ async function main() {
   // ── Seed recruiter user ───────────────────────────────────────────────────
   const RECRUITER_EMAIL = "recruiter@heisenbug.dev";
   const RECRUITER_PASSWORD = "Heisenbug_Recruiter_Rotated_2026_Secure!";
-  const RECRUITER_ID = "user_3Kj044VTw2XS8PQw3iHHckytYzj";
+  const RECRUITER_ID = "user_3KoNw0uTwdvkcb3H80EYtU163UE";
 
   const recruiter = await prisma.user.upsert({
     where: { email: RECRUITER_EMAIL },
@@ -241,7 +241,7 @@ async function main() {
   // ── Seed author user ───────────────────────────────────────────────────────
   const AUTHOR_EMAIL = "author@heisenbug.dev";
   const AUTHOR_PASSWORD = "Heisenbug_Author_Rotated_2026_Secure!";
-  const AUTHOR_ID = "user_3Kj04GrfHvi9ziOyM8dMwYk4PTX";
+  const AUTHOR_ID = "user_3KoNw87mOWFRfpYM9FitTE6oya8";
 
   const author = await prisma.user.upsert({
     where: { email: AUTHOR_EMAIL },
