@@ -107,9 +107,9 @@ jobs:
       DATABASE_URL: postgresql://heisenbug:heisenbug_secret@localhost:5432/heisenbug
       JWT_SECRET: heisenbug-dev-jwt-secret-change-in-prod-please
       NEXT_PUBLIC_API_URL: http://localhost:3001
-      CLERK_PUBLISHABLE_KEY: pk_test_c3RhYmxlLWZhd24tMjc1LmNsZXJrLmFjY291bnRzLmRldiQ
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_c3RhYmxlLWZhd24tMjc1LmNsZXJrLmFjY291bnRzLmRldiQ
-      CLERK_SECRET_KEY: sk_test_stp220g73j4tus1ZlV8JNEuNghs4eHG1uJ7fctDnBf
+      CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY || 'pk_test_bmV4dC1kb3J5LTQ1MjguY2xlcmsuYWNjb3VudHMuZGV2JA' }}
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || 'pk_test_bmV4dC1kb3J5LTQ1MjguY2xlcmsuYWNjb3VudHMuZGV2JA' }}
+      CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY || 'sk_test_CPWfOno8bpFZTxxUPah5RsdeSB4agy7tNIaTgMdLxB' }}
 
     steps:
       - name: Checkout repository
@@ -143,9 +143,9 @@ jobs:
 
       - name: Build API and Web
         env:
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_c3RhYmxlLWZhd24tMjc1LmNsZXJrLmFjY291bnRzLmRldiQ
-          CLERK_SECRET_KEY: sk_test_stp220g73j4tus1ZlV8JNEuNghs4eHG1uJ7fctDnBf
-          CLERK_PUBLISHABLE_KEY: pk_test_c3RhYmxlLWZhd24tMjc1LmNsZXJrLmFjY291bnRzLmRldiQ
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || 'pk_test_bmV4dC1kb3J5LTQ1MjguY2xlcmsuYWNjb3VudHMuZGV2JA' }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY || 'sk_test_CPWfOno8bpFZTxxUPah5RsdeSB4agy7tNIaTgMdLxB' }}
+          CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY || 'pk_test_bmV4dC1kb3J5LTQ1MjguY2xlcmsuYWNjb3VudHMuZGV2JA' }}
         run: |
           npm --workspace=@heisenbug/api run build
           npm --workspace=@heisenbug/web run build
@@ -156,9 +156,9 @@ jobs:
           DATABASE_URL: postgresql://heisenbug:heisenbug_secret@localhost:5432/heisenbug
           JWT_SECRET: heisenbug-dev-jwt-secret-change-in-prod-please
           NEXT_PUBLIC_API_URL: http://localhost:3001
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_c3RhYmxlLWZhd24tMjc1LmNsZXJrLmFjY291bnRzLmRldiQ
-          CLERK_SECRET_KEY: sk_test_stp220g73j4tus1ZlV8JNEuNghs4eHG1uJ7fctDnBf
-          CLERK_PUBLISHABLE_KEY: pk_test_c3RhYmxlLWZhd24tMjc1LmNsZXJrLmFjY291bnRzLmRldiQ
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || 'pk_test_bmV4dC1kb3J5LTQ1MjguY2xlcmsuYWNjb3VudHMuZGV2JA' }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY || 'sk_test_CPWfOno8bpFZTxxUPah5RsdeSB4agy7tNIaTgMdLxB' }}
+          CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY || 'pk_test_bmV4dC1kb3J5LTQ1MjguY2xlcmsuYWNjb3VudHMuZGV2JA' }}
         run: npx playwright test
 
       - name: Upload Playwright report

@@ -45,13 +45,13 @@ export default defineConfig({
           process.env.JWT_SECRET || 'jfSKBkvJP9ynQM78g9OFLl55mC0vSm6la0KqQ9M+Oa+665famfaLfJG7gboUzmmi',
         CLERK_PUBLISHABLE_KEY:
           process.env.CLERK_PUBLISHABLE_KEY ||
-          'pk_test_c3RhYmxlLWZhd24tMjc1LmNsZXJrLmFjY291bnRzLmRldiQ',
+          'pk_test_bmV4dC1kb3J5LTQ1MjguY2xlcmsuYWNjb3VudHMuZGV2JA',
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
           process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ||
-          'pk_test_c3RhYmxlLWZhd24tMjc1LmNsZXJrLmFjY291bnRzLmRldiQ',
+          'pk_test_bmV4dC1kb3J5LTQ1MjguY2xlcmsuYWNjb3VudHMuZGV2JA',
         CLERK_SECRET_KEY:
           process.env.CLERK_SECRET_KEY ||
-          'sk_test_stp220g73j4tus1ZlV8JNEuNghs4eHG1uJ7fctDnBf',
+          'sk_test_CPWfOno8bpFZTxxUPah5RsdeSB4agy7tNIaTgMdLxB',
       },
     },
     {
@@ -66,10 +66,10 @@ export default defineConfig({
         NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001',
         NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
           process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ||
-          'pk_test_c3RhYmxlLWZhd24tMjc1LmNsZXJrLmFjY291bnRzLmRldiQ',
+          'pk_test_bmV4dC1kb3J5LTQ1MjguY2xlcmsuYWNjb3VudHMuZGV2JA',
         CLERK_SECRET_KEY:
           process.env.CLERK_SECRET_KEY ||
-          'sk_test_stp220g73j4tus1ZlV8JNEuNghs4eHG1uJ7fctDnBf',
+          'sk_test_CPWfOno8bpFZTxxUPah5RsdeSB4agy7tNIaTgMdLxB',
       },
     },
   ],

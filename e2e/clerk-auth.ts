@@ -1,15 +1,15 @@
 import { createClerkClient } from '@clerk/backend';
 
 const CLERK_SECRET_KEY =
-  process.env.CLERK_SECRET_KEY || 'sk_test_stp220g73j4tus1ZlV8JNEuNghs4eHG1uJ7fctDnBf';
+  process.env.CLERK_SECRET_KEY || 'sk_test_CPWfOno8bpFZTxxUPah5RsdeSB4agy7tNIaTgMdLxB';
 
 const clerk = createClerkClient({ secretKey: CLERK_SECRET_KEY });
 
 const DEMO_USER_IDS: Record<string, string> = {
-  'alice@heisenbug.dev': 'user_3Kj03zYIzBuj6qJn3k1Q1wcHn7e',
-  'recruiter@heisenbug.dev': 'user_3Kj044VTw2XS8PQw3iHHckytYzj',
-  'admin@heisenbug.dev': 'user_3Kj048oi2wO3sqP1mh97dCDOMtV',
-  'author@heisenbug.dev': 'user_3Kj04GrfHvi9ziOyM8dMwYk4PTX',
+  'alice@heisenbug.dev': 'user_3KoNtVjDJgOKQbNli5tWQL0daQp',
+  'recruiter@heisenbug.dev': 'user_3KoNw0uTwdvkcb3H80EYtU163UE',
+  'admin@heisenbug.dev': 'user_3KoNw3ZFNOwSbGNP5YOl3753GWz',
+  'author@heisenbug.dev': 'user_3KoNw87mOWFRfpYM9FitTE6oya8',
 };
 
 /**
