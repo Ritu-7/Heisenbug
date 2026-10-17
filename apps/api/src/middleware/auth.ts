@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { getAuth, clerkClient } from "@clerk/express";
 import jwt from "jsonwebtoken";
+import { prisma } from "../lib/prisma";
 
 export interface AuthUser {
   sub: string;   // user id (Clerk user ID or legacy id)
@@ -53,15 +54,31 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         clerkUser.emailAddresses?.[0];
       const email = emailObj?.emailAddress || "";
 
-      // Role source of truth: Clerk user privateMetadata (never unsafeMetadata or publicMetadata)
-      const role =
-        (clerkUser.privateMetadata?.role as string) ||
-        "CANDIDATE";
+      // Role source of truth: Clerk user privateMetadata (with DB fallback for test/seeded users)
+      let role = (clerkUser.privateMetadata?.role as string);
+      let sub = auth.userId;
+
+      if (!role) {
+        try {
+          const dbUser = await prisma.user.findFirst({
+            where: {
+              OR: [{ id: auth.userId }, { email: email.toLowerCase() }],
+            },
+            select: { id: true, role: true },
+          });
+          if (dbUser) {
+            role = dbUser.role;
+            sub = dbUser.id;
+          }
+        } catch {
+          // Ignore DB error, fallback to CANDIDATE
+        }
+      }
 
       req.user = {
-        sub: auth.userId,
+        sub,
         email,
-        role,
+        role: role || "CANDIDATE",
       };
       next();
       return;

@@ -20,7 +20,7 @@ test.describe('Candidate Practice Flow', () => {
     await expect(page.getByRole('heading', { name: 'Problem Catalogue' })).toBeVisible();
 
     // 3. Click into be-idempotency-001
-    const problemLink = page.locator('a[href="/problems/be-idempotency-001"]');
+    const problemLink = page.locator('a[href="/problems/be-idempotency-001"]').first();
     await expect(problemLink).toBeVisible();
     await problemLink.click();
 
