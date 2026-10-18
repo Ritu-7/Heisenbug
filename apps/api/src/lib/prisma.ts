@@ -25,8 +25,8 @@ function buildDatabaseUrl(): string | undefined {
 
   try {
     const url = new URL(raw);
-    const limit = process.env.PRISMA_CONNECTION_LIMIT ?? "5";
-    const timeout = process.env.PRISMA_POOL_TIMEOUT ?? "10";
+    const limit = process.env.PRISMA_CONNECTION_LIMIT ?? "10";
+    const timeout = process.env.PRISMA_POOL_TIMEOUT ?? "30";
 
     // Only set if not already present in the URL (so local overrides still work)
     if (!url.searchParams.has("connection_limit")) {

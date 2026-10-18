@@ -13,6 +13,23 @@
   "files": [
     { "path": "src/train.py", "editable": true,  "label": "training pipeline" }
   ],
+  "hints": [
+    {
+      "index": 1,
+      "title": "Where to look",
+      "body": "Open `src/train.py` and read every column name in `build_features()`. Ask yourself for each feature: **\"Would I know this value at the moment I need to predict whether a customer will churn?\"** One of the columns encodes something that can only be known *after* the customer has already churned."
+    },
+    {
+      "index": 2,
+      "title": "The concept",
+      "body": "This is **target leakage** (a form of data leakage). The column `refund_issued` is populated by the billing system only *after* a customer cancels their account — meaning at prediction time (for active customers), it is always `0`. The model learns that `refund_issued = 1` ≈ churned, achieving 96% accuracy in cross-validation but failing completely in production where every live customer has `refund_issued = 0`."
+    },
+    {
+      "index": 3,
+      "title": "The fix approach",
+      "body": "In `build_features()`, drop the leaky column before returning the feature matrix:\n```python\nfeatures = features.drop(columns=[\"refund_issued\"])\n```\nThis is the single-line fix. More broadly, always audit your features for post-label information: columns filled by downstream business processes (refunds, cancellation reasons, support tickets filed after churn) are common sources of leakage. A useful sanity check is to look at feature importances — a leaky feature will have implausibly high importance."
+    }
+  ],
   "badPatches": [
     {
       "id": "log_transform_leaky",

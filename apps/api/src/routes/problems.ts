@@ -284,6 +284,60 @@ router.get("/:slug", async (req: Request<{ slug: string }>, res: Response): Prom
 });
 
 /**
+ * GET /api/problems/:slug/hints
+ *
+ * Returns the hints array from the problem pack's meta.json.
+ * If a `sessionId` query param is provided the endpoint gates hint bodies:
+ *   - revealed hints (index appears in HintUse table) → full { index, title, body, revealed: true }
+ *   - unrevealed hints → { index, title, revealed: false }  (no body in payload)
+ * Without a sessionId all hints are returned unrevealed (UI-only gating).
+ */
+router.get("/:slug/hints", async (req: Request<{ slug: string }>, res: Response): Promise<void> => {
+  const { slug } = req.params;
+  const { sessionId } = req.query as { sessionId?: string };
+
+  const packDir = path.join(PROBLEMS_ROOT, slug);
+  const metaPath = path.join(packDir, "meta.json");
+
+  if (!fs.existsSync(metaPath)) {
+    res.status(404).json({ ok: false, error: `Problem pack '${slug}' not found` });
+    return;
+  }
+
+  let meta: { hints?: Array<{ index: number; title: string; body: string }> };
+  try {
+    meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+  } catch {
+    res.status(500).json({ ok: false, error: "Failed to parse problem meta.json" });
+    return;
+  }
+
+  const allHints = meta.hints ?? [];
+  const revealedIndices = new Set<number>();
+
+  if (sessionId && typeof sessionId === "string") {
+    try {
+      const hintUses = await prisma.hintUse.findMany({
+        where: { sessionId },
+        select: { hintIndex: true },
+      });
+      for (const hu of hintUses) revealedIndices.add(hu.hintIndex);
+    } catch {
+      // DB error or session not found — fall through with empty set
+    }
+  }
+
+  const shaped = allHints.map((h) => {
+    const revealed = revealedIndices.size === 0 ? false : revealedIndices.has(h.index);
+    return revealed
+      ? { index: h.index, title: h.title, body: h.body, revealed: true }
+      : { index: h.index, title: h.title, revealed: false };
+  });
+
+  res.json({ ok: true, data: { slug, totalHints: allHints.length, hints: shaped } });
+});
+
+/**
  * GET /api/problems/:slug/near-misses
  * Returns the bad patches for a problem pack, including:
  * - Bad patch code

@@ -487,6 +487,31 @@ export async function fetchProblemNearMisses(slug: string): Promise<ProblemNearM
   return res.data;
 }
 
+// ── Hints ───────────────────────────────────────────────────────────────────
+
+export interface ProblemHint {
+  index: number;
+  title: string;
+  /** Only present when revealed === true */
+  body?: string;
+  revealed: boolean;
+}
+
+export interface ProblemHintsResponse {
+  slug: string;
+  totalHints: number;
+  hints: ProblemHint[];
+}
+
+/** GET /api/problems/:slug/hints — optionally scoped to a session for reveal gating */
+export async function fetchProblemHints(slug: string, sessionId?: string | null): Promise<ProblemHintsResponse> {
+  const qs = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
+  const res = await apiFetch<{ ok: boolean; data: ProblemHintsResponse }>(
+    `/api/problems/${slug}/hints${qs}`,
+  );
+  return res.data;
+}
+
 // ── Admin Problem Authoring ───────────────────────────────────────────────
 
 export interface DraftProblemPayload {

@@ -13,6 +13,23 @@
       "label": "implementation"
     }
   ],
+  "hints": [
+    {
+      "index": 1,
+      "title": "Where to look",
+      "body": "Find the `GET /orders` route handler. It fetches a list of orders, then look at what happens inside the loop that follows. Count how many database calls are made for a user with N orders — you should see a pattern that grows linearly with N."
+    },
+    {
+      "index": 2,
+      "title": "The concept",
+      "body": "This is the **N+1 query problem**. The handler makes 1 query to get the list of orders, then makes 1 additional query *per order* to fetch its line items — so N orders = N+1 total database round-trips. With 50 orders that's 51 queries for a single API call. The fix is to replace the per-order lookup with a single **batch query** that fetches all items for all orders at once."
+    },
+    {
+      "index": 3,
+      "title": "The fix approach",
+      "body": "Replace the `for...of` loop that calls `db.getOrderItems(order.id)` with a single call to `db.getOrderItemsBatch(orderIds)`. The steps are:\n1. Collect all order IDs into an array: `const orderIds = orders.map(o => o.id)`.\n2. Call `const itemsMap = await db.getOrderItemsBatch(orderIds)` — this returns a `{ [orderId]: items[] }` map in 1 query.\n3. Build the response by mapping over `orders` and looking up `itemsMap[order.id]`.\n\nResult: 2 queries total (1 for orders + 1 batch for items), regardless of how many orders the user has."
+    }
+  ],
   "badPatches": [
     {
       "id": "naive_solution",

@@ -1,5 +1,15 @@
 import { defineConfig, devices } from '@playwright/test';
 
+if (!process.env.CLERK_PUBLISHABLE_KEY) {
+  process.env.CLERK_PUBLISHABLE_KEY = 'pk_test_bmV4dC1kb3J5LTQ1MjguY2xlcmsuYWNjb3VudHMuZGV2JA';
+}
+if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = process.env.CLERK_PUBLISHABLE_KEY;
+}
+if (!process.env.CLERK_SECRET_KEY) {
+  process.env.CLERK_SECRET_KEY = 'sk_test_CPWfOno8bpFZTxxUPah5RsdeSB4agy7tNIaTgMdLxB';
+}
+
 export default defineConfig({
   globalSetup: require.resolve('./e2e/global-setup.ts'),
   testDir: './e2e',
@@ -39,7 +49,7 @@ export default defineConfig({
       env: {
         DATABASE_URL:
           process.env.DATABASE_URL ||
-          'postgresql://neondb_owner:npg_HREtBgIDO19u@ep-billowing-leaf-az3yxma3-pooler.c-3.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require',
+          'postgresql://neondb_owner:npg_HREtBgIDO19u@ep-billowing-leaf-az3yxma3-pooler.c-3.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require&pgbouncer=true&connect_timeout=30',
         PORT: '3001',
         JWT_SECRET:
           process.env.JWT_SECRET || 'jfSKBkvJP9ynQM78g9OFLl55mC0vSm6la0KqQ9M+Oa+665famfaLfJG7gboUzmmi',

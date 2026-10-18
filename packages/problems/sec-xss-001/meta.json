@@ -6,6 +6,26 @@
   "language": "javascript",
   "testFramework": "jest",
   "testCommand": "npx jest --json --no-coverage --forceExit",
+  "files": [
+    { "path": "src/comments.js", "editable": true, "label": "comment service" }
+  ],
+  "hints": [
+    {
+      "index": 1,
+      "title": "Where to look",
+      "body": "Look at `renderCommentHtml()` in `src/comments.js`. It builds an HTML string and interpolates `comment.author` and `comment.text` directly into the template. Try passing `author = '<img src=x onerror=alert(1)>'` and see what the output HTML looks like."
+    },
+    {
+      "index": 2,
+      "title": "The concept",
+      "body": "This is a **reflected / stored XSS (Cross-Site Scripting)** vulnerability caused by **missing output encoding**. User-controlled strings are concatenated directly into HTML without escaping the five special characters (`& < > \" '`). Any attacker who can store a comment can inject arbitrary HTML or JavaScript that executes in victims' browsers when the preview is rendered."
+    },
+    {
+      "index": 3,
+      "title": "The fix approach",
+      "body": "Write an `escapeHtml(str)` helper that replaces the five special characters with their HTML entities:\n```\n& → &amp;   < → &lt;   > → &gt;   \" → &quot;   ' → &#39;\n```\nCall `escapeHtml(comment.author)` and `escapeHtml(comment.text)` before interpolating into the template string. **Do NOT** store escaped text — escape at the *output boundary* only, so the raw text remains reusable. Avoid blacklist/regex approaches (e.g. stripping `<script>`) — attackers bypass them with `<img onerror=…>`, `<svg onload=…>`, and mixed-case variants."
+    }
+  ],
   "badPatches": [
     {
       "id": "naive_blacklist",

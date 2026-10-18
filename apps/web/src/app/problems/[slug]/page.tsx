@@ -22,6 +22,8 @@ import {
   getActiveToken,
   fetchSessionSubmissions,
   fetchProblemNearMisses,
+  fetchProblemHints,
+  postSessionHint,
   apiFetch,
   type Session,
   type SessionEvent,
@@ -29,6 +31,7 @@ import {
   type SubmitResult,
   type VerdictCheck,
   type BadPatchNearMiss,
+  type ProblemHint,
 } from "@/lib/api";
 import { DifficultyBadge, TrackBadge } from "@/components/badge";
 import { AIMentorPanel } from "@/components/ai-mentor-panel";
@@ -486,6 +489,329 @@ function NearMissesPanel({ slug }: { slug: string }) {
   );
 }
 
+// ── Hints Panel ───────────────────────────────────────────────────────────
+
+function HintsPanel({
+  slug,
+  sessionId,
+  isAssessment,
+}: {
+  slug: string;
+  sessionId: string | null;
+  isAssessment: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const reduce = useReducedMotion();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["hints", slug, sessionId],
+    queryFn: () => fetchProblemHints(slug, sessionId),
+  });
+
+  const [revealingIdx, setRevealingIdx] = useState<number | null>(null);
+
+  // The highest hint index already revealed (0 = none)
+  const maxRevealed = data?.hints.filter((h) => h.revealed).reduce((m, h) => Math.max(m, h.index), 0) ?? 0;
+  const totalHints = data?.totalHints ?? 3;
+
+  const revealMutation = useMutation({
+    mutationFn: async (hintIndex: number) => {
+      if (!sessionId) throw new Error("Start a session first");
+      setRevealingIdx(hintIndex);
+      return postSessionHint(sessionId, hintIndex, 5, `Hint ${hintIndex} of ${totalHints}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["hints", slug, sessionId] });
+      setRevealingIdx(null);
+    },
+    onError: () => setRevealingIdx(null),
+  });
+
+  if (isAssessment) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8 text-center text-text-secondary space-y-3">
+        <div className="h-10 w-10 rounded-full bg-surface-2 border border-border flex items-center justify-center text-lg">🔒</div>
+        <h3 className="font-serif text-base font-semibold text-text">Locked in Assessment Mode</h3>
+        <p className="text-xs max-w-sm">Hints are disabled during timed assessments.</p>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="p-6 animate-pulse space-y-3">
+        {[1, 2, 3].map((i) => <div key={i} className="h-12 bg-surface-2 rounded" />)}
+      </div>
+    );
+  }
+
+  if (!data || data.hints.length === 0) {
+    return (
+      <div className="py-16 text-center text-text-secondary">
+        <p className="text-sm italic">No hints written yet for this problem.</p>
+      </div>
+    );
+  }
+
+  // Next hint index to reveal (one beyond the current max)
+  const nextToReveal = maxRevealed + 1;
+  const allRevealed = maxRevealed >= totalHints;
+
+  return (
+    <div className="p-4 space-y-3 overflow-y-auto">
+      {/* Header row */}
+      <div className="flex items-center justify-between pb-1 border-b border-border">
+        <span className="text-xs font-mono text-text-secondary">
+          {maxRevealed}/{totalHints} hints revealed
+        </span>
+        {!sessionId && (
+          <span className="text-[10px] text-warning font-mono">Start a session to track hints</span>
+        )}
+      </div>
+
+      {/* Hint cards */}
+      <div className="space-y-2">
+        {data.hints.map((hint) => {
+          const isRevealed = hint.revealed;
+          const isNext = hint.index === nextToReveal;
+          return (
+            <motion.div
+              key={hint.index}
+              initial={reduce ? false : { opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.15, delay: hint.index * 0.05 }}
+              className={cn(
+                "rounded-lg border transition-colors",
+                isRevealed ? "border-accent/30 bg-accent-soft/20" : "border-border bg-surface-2",
+              )}
+            >
+              <div className="flex items-center gap-3 px-4 py-3">
+                <span
+                  className={cn(
+                    "flex-shrink-0 h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-mono font-semibold border",
+                    isRevealed
+                      ? "bg-accent text-white border-accent"
+                      : "bg-surface text-text-secondary border-border",
+                  )}
+                >
+                  {hint.index}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className={cn("text-sm font-medium", isRevealed ? "text-text" : "text-text-secondary")}>
+                    {hint.title}
+                  </p>
+                </div>
+
+                {!isRevealed && isNext && (
+                  <button
+                    onClick={() => revealMutation.mutate(hint.index)}
+                    disabled={revealMutation.isPending}
+                    className={cn(
+                      "flex-shrink-0 px-3 py-1 rounded text-xs font-mono font-semibold transition-colors border",
+                      "bg-accent text-white border-accent hover:bg-accent/90",
+                      "disabled:opacity-50 disabled:cursor-not-allowed",
+                    )}
+                  >
+                    {revealingIdx === hint.index ? "..." : `Reveal hint ${hint.index} of ${totalHints}`}
+                  </button>
+                )}
+                {!isRevealed && !isNext && (
+                  <span className="flex-shrink-0 text-[10px] font-mono text-text-secondary opacity-60">
+                    🔒 Reveal hint {nextToReveal} first
+                  </span>
+                )}
+                {isRevealed && (
+                  <span className="flex-shrink-0 text-[10px] font-mono text-pass opacity-80">✓ Revealed</span>
+                )}
+              </div>
+
+              {/* Revealed body */}
+              {isRevealed && hint.body && (
+                <div className="px-4 pb-4 border-t border-accent/20 mt-0">
+                  <div className="prose prose-sm max-w-none text-text leading-relaxed pt-3
+                    prose-code:font-mono prose-code:text-accent prose-code:bg-accent-soft prose-code:px-1 prose-code:rounded
+                    prose-pre:bg-surface prose-pre:text-text prose-pre:rounded
+                    prose-strong:text-text prose-a:text-accent">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{hint.body}</ReactMarkdown>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {allRevealed && (
+        <p className="text-center text-xs text-text-secondary font-mono pt-2">
+          All hints revealed — check the Editorial tab for a full deep-dive.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Editorial Panel ───────────────────────────────────────────────────────
+
+function EditorialPanel({
+  editorialMd,
+  isAssessment,
+}: {
+  editorialMd: string;
+  isAssessment: boolean;
+}) {
+  if (isAssessment) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8 text-center text-text-secondary space-y-3">
+        <div className="h-10 w-10 rounded-full bg-surface-2 border border-border flex items-center justify-center text-lg">🔒</div>
+        <h3 className="font-serif text-base font-semibold text-text">Locked in Assessment Mode</h3>
+        <p className="text-xs max-w-sm">Editorial is disabled during timed assessments.</p>
+      </div>
+    );
+  }
+  if (!editorialMd?.trim()) {
+    return (
+      <div className="py-16 text-center text-text-secondary space-y-2">
+        <p className="text-2xl">📝</p>
+        <p className="text-sm font-medium text-text">Editorial not yet written</p>
+        <p className="text-xs max-w-xs mx-auto">Come back after attempting the problem — an editorial will appear here once the problem is fully published.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="prose prose-sm max-w-none text-text leading-relaxed p-4
+      prose-headings:font-serif prose-headings:text-text
+      prose-h2:text-base prose-h3:text-sm
+      prose-code:font-mono prose-code:text-accent prose-code:bg-accent-soft prose-code:px-1 prose-code:rounded
+      prose-pre:bg-surface-2 prose-pre:text-text prose-pre:rounded-lg
+      prose-a:text-accent prose-a:no-underline hover:prose-a:underline
+      prose-table:text-xs prose-th:text-text-secondary prose-td:text-text
+      prose-strong:text-text prose-blockquote:border-accent/40 prose-blockquote:text-text-secondary">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{editorialMd}</ReactMarkdown>
+    </div>
+  );
+}
+
+// ── Solution Panel ────────────────────────────────────────────────────────
+
+function SolutionPanel({
+  solutionMd,
+  sessionId,
+  hasSubmitted,
+  isAssessment,
+}: {
+  solutionMd: string;
+  sessionId: string | null;
+  hasSubmitted: boolean;
+  isAssessment: boolean;
+}) {
+  const [gaveUp, setGaveUp] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const isUnlocked = hasSubmitted || gaveUp;
+
+  if (isAssessment) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8 text-center text-text-secondary space-y-3">
+        <div className="h-10 w-10 rounded-full bg-surface-2 border border-border flex items-center justify-center text-lg">🔒</div>
+        <h3 className="font-serif text-base font-semibold text-text">Locked in Assessment Mode</h3>
+        <p className="text-xs max-w-sm">Reference solutions are disabled during timed assessments.</p>
+      </div>
+    );
+  }
+
+  if (!isUnlocked) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-8 text-center space-y-4">
+        <div className="h-12 w-12 rounded-full bg-surface-2 border border-border flex items-center justify-center text-2xl">🔐</div>
+        <div className="space-y-1.5">
+          <h3 className="font-serif text-base font-semibold text-text">Solution locked</h3>
+          <p className="text-xs text-text-secondary max-w-xs">
+            The reference solution is revealed after your first submission — or if you choose to give up.
+          </p>
+        </div>
+
+        {!sessionId ? (
+          <p className="text-xs font-mono text-text-secondary">Start a session to submit and unlock.</p>
+        ) : (
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-xs text-text-secondary font-mono">No submissions yet.</p>
+            <button
+              onClick={() => setShowConfirm(true)}
+              className="px-3 py-1.5 rounded text-xs font-mono text-text-secondary hover:text-fail border border-border hover:border-fail/40 transition-colors"
+            >
+              Give up and show solution
+            </button>
+          </div>
+        )}
+
+        {/* Confirm dialog */}
+        <AnimatePresence>
+          {showConfirm && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96 }}
+              transition={{ duration: 0.12 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm"
+            >
+              <div className="w-full max-w-sm rounded-xl border border-border bg-surface shadow-2xl p-5 space-y-4">
+                <h4 className="font-serif text-base font-semibold text-text">Give up?</h4>
+                <p className="text-xs text-text-secondary">
+                  This will unlock the reference solution without submitting your work. Your session will remain active.
+                </p>
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={() => setShowConfirm(false)}
+                    className="px-3 py-1.5 text-xs font-mono rounded border border-border text-text-secondary hover:text-text transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => { setGaveUp(true); setShowConfirm(false); }}
+                    className="px-3 py-1.5 text-xs font-mono rounded bg-fail text-white hover:bg-fail/90 transition-colors"
+                  >
+                    Yes, show solution
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
+
+  if (!solutionMd?.trim()) {
+    return (
+      <div className="py-16 text-center text-text-secondary space-y-2">
+        <p className="text-2xl">🔓</p>
+        <p className="text-sm font-medium text-text">Solution not yet written</p>
+        <p className="text-xs max-w-xs mx-auto">The reference solution will appear here once added by the problem author.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-y-auto">
+      {gaveUp && (
+        <div className="mx-4 mt-4 px-3 py-2 rounded border border-warning/30 bg-warning-soft text-warning text-xs font-mono">
+          ⚠ You chose to view the solution without submitting.
+        </div>
+      )}
+      <div className="prose prose-sm max-w-none text-text leading-relaxed p-4
+        prose-headings:font-serif prose-headings:text-text
+        prose-h2:text-base prose-h3:text-sm
+        prose-code:font-mono prose-code:text-accent prose-code:bg-accent-soft prose-code:px-1 prose-code:rounded
+        prose-pre:bg-surface-2 prose-pre:text-text prose-pre:rounded-lg
+        prose-a:text-accent prose-a:no-underline hover:prose-a:underline
+        prose-table:text-xs prose-th:text-text-secondary prose-td:text-text
+        prose-strong:text-text prose-blockquote:border-accent/40 prose-blockquote:text-text-secondary">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{solutionMd}</ReactMarkdown>
+      </div>
+    </div>
+  );
+}
+
 // ── Tab content with crossfade ─────────────────────────────────────────────
 
 function TabContent({
@@ -494,12 +820,14 @@ function TabContent({
   sessionId,
   isAssessment,
   hasPassed,
+  hasSubmitted,
 }: {
   activeTab: Tab;
   problem: ProblemFull;
   sessionId: string | null;
   isAssessment: boolean;
   hasPassed: boolean;
+  hasSubmitted: boolean;
 }) {
   const reduce = useReducedMotion();
   const isLocked = isAssessment && (activeTab === "hints" || activeTab === "editorial" || activeTab === "solution");
@@ -531,13 +859,18 @@ function TabContent({
                 <MarkdownContent md={problem.currentVersion.descriptionMd} emptyMessage="Description not yet written." />
               )}
               {activeTab === "hints" && (
-                <MarkdownContent md="" emptyMessage="No hints written yet for this problem." />
+                <HintsPanel slug={problem.slug} sessionId={sessionId} isAssessment={isAssessment} />
               )}
               {activeTab === "editorial" && (
-                <MarkdownContent md={problem.currentVersion.editorialMd} emptyMessage="Editorial not yet written. Come back after attempting the problem." />
+                <EditorialPanel editorialMd={problem.currentVersion.editorialMd} isAssessment={isAssessment} />
               )}
               {activeTab === "solution" && (
-                <MarkdownContent md={problem.currentVersion.solutionMd} emptyMessage="Reference solution not yet written." />
+                <SolutionPanel
+                  solutionMd={problem.currentVersion.solutionMd}
+                  sessionId={sessionId}
+                  hasSubmitted={hasSubmitted}
+                  isAssessment={isAssessment}
+                />
               )}
               {activeTab === "submissions" && (
                 <SubmissionsPanel sessionId={sessionId} />
@@ -1008,6 +1341,7 @@ function WorkspaceContent({ slug }: { slug: string }) {
             sessionId={activeSession?.id ?? null}
             isAssessment={isAssessment}
             hasPassed={hasPassed}
+            hasSubmitted={userSubmissions.length > 0}
           />
         </div>
 

@@ -37,8 +37,11 @@ test.describe('Candidate Practice Flow', () => {
     const hintsTab = page.getByRole('button', { name: /^Hints/i });
     await expect(hintsTab).toBeVisible();
     await hintsTab.click();
-    // Verify hints tab renders real content (either hint cards or fallback placeholder)
-    await expect(page.locator('text=No hints written yet for this problem.')).toBeVisible();
+    // Hints tab now shows real progressive hint cards
+    await expect(page.locator('text=0/3 hints revealed')).toBeVisible();
+    await expect(page.locator('text=Where to look')).toBeVisible();
+    // Without an active session the "Reveal hint" button shows "Start a session to track hints"
+    await expect(page.locator('text=Start a session to track hints')).toBeVisible();
 
     // Verify "Common Near-Misses" tab is NOT visible before solving
     await expect(page.getByRole('button', { name: /Common Near-Misses/i })).not.toBeVisible();

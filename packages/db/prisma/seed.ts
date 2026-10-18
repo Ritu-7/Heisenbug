@@ -1,8 +1,14 @@
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import fs from "fs";
+import path from "path";
 
 const prisma = new PrismaClient();
+
+function loadProblemDoc(slug: string, filename: string): string {
+  const p = path.join(__dirname, "../../problems", slug, filename);
+  return fs.existsSync(p) ? fs.readFileSync(p, "utf-8") : "";
+}
 
 // ─── Problem 1: be-idempotency-001 ───────────────────────────────────────────
 const DESCRIPTION_MD_IDEMPOTENCY = `# PAY-482 · Checkout double-charges on client retry
@@ -276,11 +282,19 @@ async function main() {
     where: { problemId_version: { problemId: problem1.id, version: 1 } },
   });
 
+  const editorialMd1 = loadProblemDoc("be-idempotency-001", "EDITORIAL.md");
+  const solutionMd1 = loadProblemDoc("be-idempotency-001", "SOLUTION.md");
+
   let version1;
   if (existingVersion1) {
     version1 = await prisma.problemVersion.update({
       where: { id: existingVersion1.id },
-      data: { status: "PUBLISHED", descriptionMd: DESCRIPTION_MD_IDEMPOTENCY },
+      data: {
+        status: "PUBLISHED",
+        descriptionMd: DESCRIPTION_MD_IDEMPOTENCY,
+        editorialMd: editorialMd1,
+        solutionMd: solutionMd1,
+      },
     });
   } else {
     version1 = await prisma.problemVersion.create({
@@ -289,8 +303,8 @@ async function main() {
         version: 1,
         status: "PUBLISHED",
         descriptionMd: DESCRIPTION_MD_IDEMPOTENCY,
-        editorialMd: "",
-        solutionMd: "",
+        editorialMd: editorialMd1,
+        solutionMd: solutionMd1,
       },
     });
   }
@@ -334,11 +348,19 @@ async function main() {
     where: { problemId_version: { problemId: problem2.id, version: 1 } },
   });
 
+  const editorialMd2 = loadProblemDoc("be-race-002", "EDITORIAL.md");
+  const solutionMd2 = loadProblemDoc("be-race-002", "SOLUTION.md");
+
   let version2;
   if (existingVersion2) {
     version2 = await prisma.problemVersion.update({
       where: { id: existingVersion2.id },
-      data: { status: "PUBLISHED", descriptionMd: DESCRIPTION_MD_RACE },
+      data: {
+        status: "PUBLISHED",
+        descriptionMd: DESCRIPTION_MD_RACE,
+        editorialMd: editorialMd2,
+        solutionMd: solutionMd2,
+      },
     });
   } else {
     version2 = await prisma.problemVersion.create({
@@ -347,8 +369,8 @@ async function main() {
         version: 1,
         status: "PUBLISHED",
         descriptionMd: DESCRIPTION_MD_RACE,
-        editorialMd: "",
-        solutionMd: "",
+        editorialMd: editorialMd2,
+        solutionMd: solutionMd2,
       },
     });
   }
@@ -396,11 +418,19 @@ async function main() {
     where: { problemId_version: { problemId: problem3.id, version: 1 } },
   });
 
+  const editorialMd3 = loadProblemDoc("ml-leakage-001", "EDITORIAL.md");
+  const solutionMd3 = loadProblemDoc("ml-leakage-001", "SOLUTION.md");
+
   let version3;
   if (existingVersion3) {
     version3 = await prisma.problemVersion.update({
       where: { id: existingVersion3.id },
-      data: { status: "PUBLISHED", descriptionMd: descriptionMdMl },
+      data: {
+        status: "PUBLISHED",
+        descriptionMd: descriptionMdMl,
+        editorialMd: editorialMd3,
+        solutionMd: solutionMd3,
+      },
     });
   } else {
     version3 = await prisma.problemVersion.create({
@@ -409,8 +439,8 @@ async function main() {
         version: 1,
         status: "PUBLISHED",
         descriptionMd: descriptionMdMl,
-        editorialMd: "",
-        solutionMd: "",
+        editorialMd: editorialMd3,
+        solutionMd: solutionMd3,
       },
     });
   }
@@ -455,11 +485,19 @@ async function main() {
     where: { problemId_version: { problemId: problem4.id, version: 1 } },
   });
 
+  const editorialMd4 = loadProblemDoc("sec-xss-001", "EDITORIAL.md");
+  const solutionMd4 = loadProblemDoc("sec-xss-001", "SOLUTION.md");
+
   let version4;
   if (existingVersion4) {
     version4 = await prisma.problemVersion.update({
       where: { id: existingVersion4.id },
-      data: { status: "PUBLISHED", descriptionMd: descriptionMdXss },
+      data: {
+        status: "PUBLISHED",
+        descriptionMd: descriptionMdXss,
+        editorialMd: editorialMd4,
+        solutionMd: solutionMd4,
+      },
     });
   } else {
     version4 = await prisma.problemVersion.create({
@@ -468,8 +506,8 @@ async function main() {
         version: 1,
         status: "PUBLISHED",
         descriptionMd: descriptionMdXss,
-        editorialMd: "",
-        solutionMd: "",
+        editorialMd: editorialMd4,
+        solutionMd: solutionMd4,
       },
     });
   }
@@ -514,11 +552,19 @@ async function main() {
     where: { problemId_version: { problemId: problem5.id, version: 1 } },
   });
 
+  const editorialMd5 = loadProblemDoc("be-nplusone-001", "EDITORIAL.md");
+  const solutionMd5 = loadProblemDoc("be-nplusone-001", "SOLUTION.md");
+
   let version5;
   if (existingVersion5) {
     version5 = await prisma.problemVersion.update({
       where: { id: existingVersion5.id },
-      data: { status: "PUBLISHED", descriptionMd: descriptionMdNplusone },
+      data: {
+        status: "PUBLISHED",
+        descriptionMd: descriptionMdNplusone,
+        editorialMd: editorialMd5,
+        solutionMd: solutionMd5,
+      },
     });
   } else {
     version5 = await prisma.problemVersion.create({
@@ -527,8 +573,8 @@ async function main() {
         version: 1,
         status: "PUBLISHED",
         descriptionMd: descriptionMdNplusone,
-        editorialMd: "",
-        solutionMd: "",
+        editorialMd: editorialMd5,
+        solutionMd: solutionMd5,
       },
     });
   }

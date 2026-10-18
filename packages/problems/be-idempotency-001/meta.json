@@ -10,6 +10,23 @@
     { "path": "src/charge.js", "editable": true,  "label": "checkout handler" },
     { "path": "src/db/client.js", "editable": false, "label": "DB client (read-only)" }
   ],
+  "hints": [
+    {
+      "index": 1,
+      "title": "Where to look",
+      "body": "The bug lives in `handleCheckout`. Every call to the function creates a brand-new `PaymentIntent`, even when the client is retrying an earlier request. Start by reading the `req.headers` — what does the client send that could identify a retry?"
+    },
+    {
+      "index": 2,
+      "title": "The concept",
+      "body": "This is an **idempotency** problem. Clients include an `Idempotency-Key` header with each request. The server should store the result of the *first* successful call keyed by that value, and replay it verbatim on any subsequent call with the same key — without touching Stripe again."
+    },
+    {
+      "index": 3,
+      "title": "The fix approach",
+      "body": "Three things need to happen in order:\n1. **Validate** the header is present (400 if missing).\n2. **Check** the DB for an existing completed key — if found, return status 200 with the stored response body.\n3. **Lock** by inserting a row with status `IN_PROGRESS` using `db.idempotencyKey.create()`. Because the table has a `UNIQUE` constraint, a concurrent retry will throw and you can return 409. After Stripe succeeds, update the row to `COMPLETE` inside a `$transaction()` together with the order insert."
+    }
+  ],
   "badPatches": [
     {
       "id": "in_memory_map",

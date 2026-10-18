@@ -10,6 +10,23 @@
     { "path": "src/charge.js",    "editable": true,  "label": "purchase handler" },
     { "path": "src/db/client.js", "editable": false, "label": "DB client (read-only)" }
   ],
+  "hints": [
+    {
+      "index": 1,
+      "title": "Where to look",
+      "body": "Focus on `handlePurchase` in `src/charge.js`. Notice that it performs three distinct async steps: read stock → check quantity → decrement. Add some print statements or mentally trace what happens when 5 requests all execute the read step before any of them executes the decrement."
+    },
+    {
+      "index": 2,
+      "title": "The concept",
+      "body": "This is a **TOCTOU (Time-of-Check to Time-of-Use) race condition**. Between the `findUnique` (read) and the `update` (write), another concurrent request can also read the same positive quantity and pass the check — so both decrement, potentially pushing stock below zero. The fix requires making the read and write **atomic**."
+    },
+    {
+      "index": 3,
+      "title": "The fix approach",
+      "body": "Wrap the entire read-check-write in `db.$transaction(async (tx) => { ... })`. Inside the transaction callback, use `tx.stock.findUnique` and `tx.stock.update` — the in-memory stub serialises execution inside a transaction so there is no yield between operations. On a real Postgres database this corresponds to `SELECT ... FOR UPDATE` inside a transaction, or an atomic conditional `UPDATE stock SET quantity = quantity - 1 WHERE productId = $1 AND quantity > 0` checking rows-affected. Throw with a `.status` property to signal 404 / 409 from inside the transaction."
+    }
+  ],
   "badPatches": [
     {
       "id": "naive_check",
