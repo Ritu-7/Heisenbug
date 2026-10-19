@@ -111,8 +111,8 @@ app.use("/api/auth", authRouter);
 app.use("/api/users", usersRouter);
 app.use("/api/webhooks", webhooksRouter);
 app.use("/api/problems", problemsRouter);
+app.use("/api/sessions", runRouter);          // run + submit + execution-mode endpoints
 app.use("/api/sessions", sessionsRouter);
-app.use("/api/sessions", runRouter);          // run + submit endpoints
 app.use("/api/sessions", postmortemsRouter);  // postmortem + share endpoints
 app.use("/api/sessions", mentorRouter);       // AI mentor endpoints
 app.use("/api/sessions", aiCollabRouter);     // AI collaboration signals

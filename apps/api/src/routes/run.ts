@@ -307,6 +307,12 @@ export async function isDockerAvailable(): Promise<boolean> {
   return cachedDockerAvailable;
 }
 
+/** Testing helper to simulate Docker availability states */
+export function setDockerAvailableForTesting(available: boolean | null): void {
+  cachedDockerAvailable = available;
+  lastDockerCheckTime = available !== null ? Date.now() + 3_600_000 : 0;
+}
+
 /**
  * Framework-agnostic Docker runner.
  * Reads meta.json for the given slug to determine entryFile, testCommand, and testFramework,
@@ -488,25 +494,44 @@ async function runNative(opts: {
   }
 }
 
+export class IsolationUnavailableError extends Error {
+  public readonly code = "SUBMISSION_ISOLATION_UNAVAILABLE";
+  constructor(message: string, public readonly originalError?: Error) {
+    super(message);
+    this.name = "IsolationUnavailableError";
+  }
+}
+
 /**
  * Unified Test Execution Dispatcher.
- * Uses Docker sandbox if available; otherwise falls back gracefully to native execution.
+ * Uses Docker sandbox if available; falls back gracefully to native execution for non-isolated runs (e.g. visible tests).
+ * When isolated grading is required (Submit / testScope: "all"), native fallback is strictly disabled and throws IsolationUnavailableError.
  */
-async function executeRunner(opts: {
+export async function executeRunner(opts: {
   image: string;
   candidateCode: string;
   slug: string;
   testScope: "visible" | "all";
   extraVolumes?: string[];
+  allowNativeFallback?: boolean;
 }): Promise<{ result: Omit<RunResult, "rawOutput" | "durationMs">; rawOutput: string; executionMode: "DOCKER" | "NATIVE_UNISOLATED" }> {
+  const allowNative = opts.allowNativeFallback ?? (opts.testScope === "visible");
   const dockerOk = await isDockerAvailable();
   if (dockerOk) {
     try {
       const dockerRes = await runInDocker(opts);
       return { ...dockerRes, executionMode: "DOCKER" };
     } catch (dockerErr) {
+      if (!allowNative) {
+        throw new IsolationUnavailableError(
+          `Docker execution failed during isolated grading: ${(dockerErr as Error).message}`,
+          dockerErr as Error
+        );
+      }
       console.warn(`[runner] Docker execution failed for ${opts.slug}, falling back to native runner:`, (dockerErr as Error).message);
     }
+  } else if (!allowNative) {
+    throw new IsolationUnavailableError("Docker is unavailable on this host and isolated grading is required.");
   }
   const nativeRes = await runNative(opts);
   return { ...nativeRes, executionMode: "NATIVE_UNISOLATED" };
@@ -731,6 +756,7 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
       candidateCode,
       slug,
       testScope: "all",
+      allowNativeFallback: false,
       extraVolumes: [
         `${hiddenTestsHostPath}:/app/tests/hidden:ro`,
       ],
@@ -809,6 +835,16 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
       },
     });
   } catch (err: any) {
+    if (err instanceof IsolationUnavailableError || err.code === "SUBMISSION_ISOLATION_UNAVAILABLE") {
+      res.status(503).json({
+        ok: false,
+        error: "SUBMISSION_ISOLATION_UNAVAILABLE",
+        message: "Submit requires isolated grading in a Docker container, which failed during execution. Try again or run locally.",
+        detail: (err.originalError?.message || err.message || "").slice(0, 1000),
+        executionMode: "NATIVE_UNISOLATED",
+      });
+      return;
+    }
     console.error(`[submit:${id}] Grader execution error:`, {
       message: err.message,
       stack: err.stack,
