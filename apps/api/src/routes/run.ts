@@ -294,11 +294,14 @@ let lastDockerCheckTime = 0;
 
 export async function isDockerAvailable(): Promise<boolean> {
   const now = Date.now();
-  if (cachedDockerAvailable !== null && now - lastDockerCheckTime < 30_000) {
-    return cachedDockerAvailable;
+  if (cachedDockerAvailable !== null) {
+    const cacheDuration = cachedDockerAvailable ? 30_000 : 3_000;
+    if (now - lastDockerCheckTime < cacheDuration) {
+      return cachedDockerAvailable;
+    }
   }
   try {
-    await execFileAsync("docker", ["info"], { timeout: 2000 });
+    await execFileAsync("docker", ["ps", "-q"], { timeout: 5000 });
     cachedDockerAvailable = true;
   } catch {
     cachedDockerAvailable = false;

@@ -1241,6 +1241,8 @@ function WorkspaceContent({ slug }: { slug: string }) {
           {/* Submit with inline confidence prompt */}
           <div className="relative group">
             <button
+              data-testid="submit-btn"
+              aria-label="Submit"
               onClick={() => {
                 if (isSubmitBlocked) return;
                 if (!showConfidencePrompt) {
