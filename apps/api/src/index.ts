@@ -39,7 +39,7 @@ import authRouter from "./routes/auth";
 import webhooksRouter from "./routes/webhooks";
 import problemsRouter from "./routes/problems";
 import sessionsRouter from "./routes/sessions";
-import runRouter from "./routes/run";
+import runRouter, { isDockerAvailable } from "./routes/run";
 import assessmentsRouter from "./routes/assessments";
 import invitationsRouter from "./routes/invitations";
 import adminRouter from "./routes/admin";
@@ -121,6 +121,19 @@ app.use("/api/postmortems", postmortemsRouter); // public /api/postmortems/publi
 app.use("/api/assessments", assessmentsRouter);
 app.use("/api/invitations", invitationsRouter);
 app.use("/api/admin", adminRouter);
+
+// System execution mode status
+app.get("/api/system/execution-mode", async (_req, res) => {
+  const dockerOk = await isDockerAvailable();
+  res.json({
+    ok: true,
+    data: {
+      executionMode: dockerOk ? "DOCKER" : "NATIVE_UNISOLATED",
+      dockerAvailable: dockerOk,
+      submitAllowed: dockerOk,
+    },
+  });
+});
 
 // ── 404 handler ────────────────────────────────────────────────────────────
 app.use((_req, res) => {

@@ -292,7 +292,7 @@ function parsePytestJson(raw: string): Omit<RunResult, "rawOutput" | "durationMs
 let cachedDockerAvailable: boolean | null = null;
 let lastDockerCheckTime = 0;
 
-async function isDockerAvailable(): Promise<boolean> {
+export async function isDockerAvailable(): Promise<boolean> {
   const now = Date.now();
   if (cachedDockerAvailable !== null && now - lastDockerCheckTime < 30_000) {
     return cachedDockerAvailable;
@@ -498,16 +498,18 @@ async function executeRunner(opts: {
   slug: string;
   testScope: "visible" | "all";
   extraVolumes?: string[];
-}): Promise<{ result: Omit<RunResult, "rawOutput" | "durationMs">; rawOutput: string }> {
+}): Promise<{ result: Omit<RunResult, "rawOutput" | "durationMs">; rawOutput: string; executionMode: "DOCKER" | "NATIVE_UNISOLATED" }> {
   const dockerOk = await isDockerAvailable();
   if (dockerOk) {
     try {
-      return await runInDocker(opts);
+      const dockerRes = await runInDocker(opts);
+      return { ...dockerRes, executionMode: "DOCKER" };
     } catch (dockerErr) {
       console.warn(`[runner] Docker execution failed for ${opts.slug}, falling back to native runner:`, (dockerErr as Error).message);
     }
   }
-  return await runNative(opts);
+  const nativeRes = await runNative(opts);
+  return { ...nativeRes, executionMode: "NATIVE_UNISOLATED" };
 }
 
 /** Fetch latest CODE_SAVE event code, or read starter code from disk using meta.entryFile. */
@@ -531,6 +533,22 @@ async function resolveCode(sessionId: string, slug: string): Promise<string> {
 }
 
 // ── Routes ─────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/sessions/execution-mode
+ * Returns the current runtime execution environment mode ("DOCKER" vs "NATIVE_UNISOLATED").
+ */
+router.get("/execution-mode", async (_req: Request, res: Response): Promise<void> => {
+  const dockerOk = await isDockerAvailable();
+  res.json({
+    ok: true,
+    data: {
+      executionMode: dockerOk ? "DOCKER" : "NATIVE_UNISOLATED",
+      dockerAvailable: dockerOk,
+      submitAllowed: dockerOk,
+    },
+  });
+});
 
 /**
  * POST /api/sessions/:id/run
@@ -592,7 +610,7 @@ router.post("/:id/run", requireAuth, async (req: Request<{ id: string }>, res: R
   let rawOutput = "";
 
   try {
-    const { result, rawOutput: raw } = await executeRunner({
+    const { result, rawOutput: raw, executionMode } = await executeRunner({
       image: sessionImage(slug),
       candidateCode,
       slug,
@@ -602,7 +620,7 @@ router.post("/:id/run", requireAuth, async (req: Request<{ id: string }>, res: R
     rawOutput = raw;
     const durationMs = Date.now() - t0;
 
-    // Record RUN_COMPLETED event with result
+    // Record RUN_COMPLETED event with result and executionMode
     await prisma.sessionEvent.create({
       data: {
         sessionId: id,
@@ -613,13 +631,14 @@ router.post("/:id/run", requireAuth, async (req: Request<{ id: string }>, res: R
           score: result.score,
           passed: result.passed,
           checks: result.checks,
+          executionMode,
         } as unknown as Prisma.InputJsonObject,
       },
     });
 
     res.json({
       ok: true,
-      data: { ...result, rawOutput, durationMs },
+      data: { ...result, rawOutput, durationMs, executionMode },
     });
   } catch (err: any) {
     rawOutput = err.message || "Test runner failed";
@@ -673,6 +692,19 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
     return;
   }
 
+  // Option (a): Submit requires isolated grading in a Docker container.
+  // When Docker is unavailable, immediately reject with HTTP 503 rather than running unisolated.
+  const dockerAvailable = await isDockerAvailable();
+  if (!dockerAvailable) {
+    res.status(503).json({
+      ok: false,
+      error: "SUBMISSION_ISOLATION_UNAVAILABLE",
+      message: "Submit requires isolated grading in a Docker container, which is unavailable in this environment. Run visible tests or run Heisenbug locally with Docker.",
+      executionMode: "NATIVE_UNISOLATED",
+    });
+    return;
+  }
+
   const slug = session.version?.problem?.slug ?? "be-idempotency-001";
   const meta = loadProblemMeta(slug);
 
@@ -709,6 +741,7 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
       passed: result.passed,
       score:  result.score,
       checks: result.checks,
+      executionMode: "DOCKER" as const,
     };
 
     // Compute real unified diff using meta.entryFile
@@ -741,6 +774,7 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
           diffText,
           score: result.score,
           confidencePct: parsedConfidence,
+          executionMode: "DOCKER",
         },
       }),
       prisma.session.update({
@@ -758,6 +792,7 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
             checks: result.checks,
             durationMs,
             confidencePct: parsedConfidence,
+            executionMode: "DOCKER",
           } as unknown as Prisma.InputJsonObject,
         },
       }),
@@ -770,6 +805,7 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
         verdict: verdictJson,
         rawOutput,
         durationMs,
+        executionMode: "DOCKER",
       },
     });
   } catch (err: any) {

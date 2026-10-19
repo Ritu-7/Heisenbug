@@ -203,7 +203,21 @@ export default function CandidateReportPage({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {latestSubmission.executionMode && (
+              <span
+                className={cn(
+                  "px-2.5 py-1 rounded-lg border text-xs font-mono font-medium flex items-center gap-1.5",
+                  latestSubmission.executionMode === "DOCKER"
+                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                    : "bg-amber-500/10 text-amber-300 border-amber-500/30",
+                )}
+              >
+                {latestSubmission.executionMode === "DOCKER"
+                  ? "🔒 Docker Isolated"
+                  : "⚠️ Native (Unisolated)"}
+              </span>
+            )}
             <span className="px-3 py-1.5 rounded-lg border border-border bg-surface-2 text-xs font-mono text-text">
               {latestSubmission.score === 100 ? "✓ Full marks" : "Evaluated"}
             </span>

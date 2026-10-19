@@ -23,6 +23,7 @@ export interface NormalizedEvent {
   passed?: boolean;
   score?: number;
   checks?: Array<{ id: string; weight?: number; passed: boolean; message?: string }>;
+  executionMode?: "DOCKER" | "NATIVE_UNISOLATED";
 }
 
 export interface DerivedProcessMetrics {
@@ -78,6 +79,7 @@ export function normalizeEvent(
   let passed: boolean | undefined = undefined;
   let score: number | undefined = undefined;
   let checks: NormalizedEvent["checks"] = undefined;
+  const executionMode: "DOCKER" | "NATIVE_UNISOLATED" | undefined = payload.executionMode;
 
   // 1. EDIT
   if (type === "CODE_SAVE" || type === "EDIT" || type === "FILE_EDIT") {
@@ -185,6 +187,7 @@ export function normalizeEvent(
     passed,
     score,
     checks,
+    executionMode,
   };
 }
 
@@ -594,10 +597,22 @@ export function SessionReplay({
             className="rounded-lg border border-accent/40 bg-accent-soft/10 p-3.5 space-y-2"
           >
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className={cn("px-2 py-0.5 rounded text-[11px] font-mono font-semibold border", activeEvent.badgeClass)}>
                   {activeEvent.title}
                 </span>
+                {activeEvent.executionMode && (
+                  <span
+                    className={cn(
+                      "px-2 py-0.5 rounded text-[10px] font-mono font-medium border flex items-center gap-1",
+                      activeEvent.executionMode === "DOCKER"
+                        ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                        : "bg-amber-500/15 text-amber-300 border-amber-500/30",
+                    )}
+                  >
+                    {activeEvent.executionMode === "DOCKER" ? "🔒 Docker Isolated" : "⚠️ Native Unisolated"}
+                  </span>
+                )}
                 <span className="text-sm font-semibold text-text font-mono">
                   {activeEvent.summary}
                 </span>
@@ -679,6 +694,19 @@ export function SessionReplay({
                   >
                     {evt.title}
                   </span>
+
+                  {evt.executionMode && (
+                    <span
+                      className={cn(
+                        "px-1.5 py-0.5 rounded text-[9px] font-mono shrink-0 border",
+                        evt.executionMode === "DOCKER"
+                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                          : "bg-amber-500/10 text-amber-300 border-amber-500/20",
+                      )}
+                    >
+                      {evt.executionMode === "DOCKER" ? "Docker" : "Native"}
+                    </span>
+                  )}
 
                   <span className="text-sm text-text font-mono truncate">
                     {evt.summary}

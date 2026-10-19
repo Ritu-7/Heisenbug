@@ -62,6 +62,8 @@ export interface Problem {
   solveRate: number | null;
 }
 
+export type ExecutionMode = "DOCKER" | "NATIVE_UNISOLATED";
+
 export interface Submission {
   id: string;
   sessionId: string;
@@ -69,6 +71,7 @@ export interface Submission {
   verdictJson: unknown;
   score: number;
   confidencePct?: number | null;
+  executionMode?: ExecutionMode;
   createdAt: string;
 }
 
@@ -309,6 +312,7 @@ export interface RunResult {
   checks: VerdictCheck[];
   rawOutput: string;
   durationMs: number;
+  executionMode?: ExecutionMode;
 }
 
 export interface SubmitResult {
@@ -316,6 +320,19 @@ export interface SubmitResult {
   verdict: { passed: boolean; score: number; checks: VerdictCheck[] };
   rawOutput: string;
   durationMs: number;
+  executionMode?: ExecutionMode;
+}
+
+export interface ExecutionModeStatus {
+  executionMode: ExecutionMode;
+  dockerAvailable: boolean;
+  submitAllowed: boolean;
+}
+
+/** GET /api/system/execution-mode — check runtime Docker availability and submission allowance */
+export async function fetchExecutionMode(): Promise<ExecutionModeStatus> {
+  const data = await apiFetch<{ ok: boolean; data: ExecutionModeStatus }>("/api/system/execution-mode");
+  return data.data;
 }
 
 /** POST /api/sessions/:id/run — runs visible tests inside Docker */
@@ -660,6 +677,7 @@ export interface PostmortemDoc {
     }>;
     submittedAt: string;
     diffText: string;
+    executionMode?: ExecutionMode;
   };
 
   narrative: {

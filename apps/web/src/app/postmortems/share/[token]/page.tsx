@@ -224,7 +224,7 @@ export default function PublicPostmortemPage({
           ))}
         </div>
 
-        <div className="flex items-center gap-3 pt-2">
+        <div className="flex items-center gap-3 pt-2 flex-wrap">
           <span
             className={cn(
               "px-4 py-1.5 rounded-full text-sm font-bold font-mono border",
@@ -235,6 +235,20 @@ export default function PublicPostmortemPage({
           >
             {doc.verdict.passed ? "✓ PASSED" : "✗ FAILED"}
           </span>
+          {doc.verdict.executionMode && (
+            <span
+              className={cn(
+                "px-3 py-1 rounded-full text-xs font-mono font-medium border flex items-center gap-1",
+                doc.verdict.executionMode === "DOCKER"
+                  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                  : "bg-amber-500/15 text-amber-300 border-amber-500/30",
+              )}
+            >
+              {doc.verdict.executionMode === "DOCKER"
+                ? "🔒 Docker Isolated"
+                : "⚠️ Native (Unisolated)"}
+            </span>
+          )}
           <span className="text-2xl font-bold font-mono text-text">
             {doc.verdict.score}
             <span className="text-sm font-normal text-text-secondary">/100</span>

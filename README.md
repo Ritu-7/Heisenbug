@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-Heisenbug is a technical assessment platform where candidates fix real-world, ticket-style engineering bugs—such as concurrency races, machine learning data leakage, cross-site scripting (XSS), and database N+1 query bottlenecks—instead of solving algorithmic trivia. Candidate submissions are executed and verified against hidden test suites inside isolated Docker containers that the candidate never sees.
+Heisenbug is a technical assessment platform where candidates fix real-world, ticket-style engineering bugs—such as concurrency races, machine learning data leakage, cross-site scripting (XSS), and database N+1 query bottlenecks—instead of solving algorithmic trivia. In verified environments (local development and GitHub Actions CI), candidate code is executed and graded inside isolated Docker containers that candidates never see. In environments lacking Docker daemon access (such as the live Render demo), the platform explicitly detects the missing daemon, executes visible tests in `native-unisolated` fallback mode, and strictly blocks official submission grading to prevent unverified verdicts.
 
 Currently, **5 of 5** production problem packs are fully seeded and published in the database across three engineering tracks:
 - **Backend**: *Checkout double-charges on client retry* (`be-idempotency-001`) — Node/Express, idempotency keys, distributed concurrency.
@@ -20,7 +20,10 @@ Currently, **5 of 5** production problem packs are fully seeded and published in
 - **Web Application**: [https://heisenbug.vercel.app](https://heisenbug.vercel.app)
 - **API Server**: [https://heisenbug-api.onrender.com](https://heisenbug-api.onrender.com)
 
-> **Note on Cold Starts**: The API server is hosted on Render's free tier and spins down during periods of inactivity. Please allow 30–60 seconds for the service to wake up on the initial request.
+> [!WARNING]
+> **Live Demo Execution Mode (`native-unisolated`)**: The live backend API is hosted on Render's free web service tier, which lacks Docker daemon socket (`/var/run/docker.sock`) access. Consequently, the live demo runs visible tests in **`native-unisolated`** mode directly on the host process. To preserve evaluation integrity, official hidden-test grading (`Submit`) is strictly disabled on the live Render deployment until migration to a dedicated VM with Docker daemon access is complete. Full container-isolated grading is verified and active in local development and GitHub Actions CI.
+>
+> **Note on Cold Starts**: Render's free tier spins down during periods of inactivity; please allow 30–60 seconds for the service to wake up on the initial request.
 
 ---
 
@@ -51,10 +54,10 @@ Heisenbug is architected as a modular TypeScript monorepo combining a modern web
 - **Express API (`apps/api`)**: Node.js/Express service orchestrating Docker container lifecycles, session state, Gemini AI integration, and telemetry ingestion.
 - **Database (`packages/db`)**: PostgreSQL (Neon) with Prisma ORM persisting problems, version history, test sessions, candidate event streams, submissions, and recruiter assessments.
 - **Authentication**: Managed via [Clerk](https://clerk.com) for candidate, recruiter, and administrator identities with role-based access control (`CANDIDATE`, `RECRUITER`, `ADMIN`) synced via signed Svix webhooks. Passwordless timed assessment invitations use session-scoped JWT tokens.
-- **Docker-Based Grading Engine**:
+- **Docker-Based Grading Engine (Local & CI Enforced)**:
   - **Session Runner (`heisenbug-session-runner`)**: Runs candidate-triggered visible tests against code modifications in real time.
   - **Grader Runner (`heisenbug-grader-runner`)**: Executes the full suite of visible and hidden tests with build-time isolation. Hidden test suites, fixtures, and grading harnesses are baked directly into the grader container image at build time, ensuring candidate code cannot inspect, alter, or mock evaluation criteria.
-  *(Note: MicroVM sandboxing like gVisor or Firecracker represents a planned future enhancement; Docker container isolation is the active, implemented engine.)*
+  *(Note on Environment Isolation: Docker container isolation is strictly enforced in local development and GitHub Actions CI. The live demo on Render lacks Docker daemon access and operates in `native-unisolated` fallback mode for visible tests while blocking official hidden grading. MicroVM sandboxing like gVisor or Firecracker is planned for future multi-tenant production hardening).*
 
 ---
 

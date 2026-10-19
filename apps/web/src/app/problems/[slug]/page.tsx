@@ -24,6 +24,7 @@ import {
   fetchProblemNearMisses,
   fetchProblemHints,
   postSessionHint,
+  fetchExecutionMode,
   apiFetch,
   type Session,
   type SessionEvent,
@@ -266,13 +267,27 @@ function VerdictPanel({
         result.passed ? "border-pass/30 bg-pass-soft" : "border-fail/30 bg-fail-soft",
       )}
     >
-      <div className="flex items-center justify-between">
-        <span className={cn("text-xs font-semibold font-mono", result.passed ? "text-pass" : "text-fail")}>
-          {kind === "run" ? "▶ Run result" : "🏁 Submit verdict"}
-          {" — "}
-          {result.score}/{totalWeight} pts
-          {" "}({Math.round((result.score / totalWeight) * 100)}%)
-        </span>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className={cn("text-xs font-semibold font-mono", result.passed ? "text-pass" : "text-fail")}>
+            {kind === "run" ? "▶ Run result" : "🏁 Submit verdict"}
+            {" — "}
+            {result.score}/{totalWeight} pts
+            {" "}({Math.round((result.score / totalWeight) * 100)}%)
+          </span>
+          {result.executionMode && (
+            <span
+              className={cn(
+                "px-2 py-0.5 rounded text-[10px] font-mono font-medium border flex items-center gap-1",
+                result.executionMode === "DOCKER"
+                  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                  : "bg-amber-500/15 text-amber-300 border-amber-500/30",
+              )}
+            >
+              {result.executionMode === "DOCKER" ? "🔒 Docker Isolated" : "⚠️ Native Unisolated"}
+            </span>
+          )}
+        </div>
         <span className="text-[10px] font-mono text-text-secondary">
           {(result.durationMs / 1000).toFixed(1)}s
         </span>
@@ -996,6 +1011,16 @@ function WorkspaceContent({ slug }: { slug: string }) {
 
   const isAssessment = activeSession?.mode === "ASSESSMENT";
 
+  // ── Query: Runtime Execution Mode ─────────────────────────────────────
+  const { data: execModeStatus } = useQuery({
+    queryKey: ["execution-mode"],
+    queryFn: fetchExecutionMode,
+    staleTime: 30_000,
+  });
+
+  const isDockerAvailable = execModeStatus ? execModeStatus.dockerAvailable : true;
+  const isSubmitBlocked = !isDockerAvailable;
+
   // Force away from locked tabs if in assessment mode
   useEffect(() => {
     if (isAssessment && (activeTab === "hints" || activeTab === "editorial" || activeTab === "solution")) {
@@ -1144,6 +1169,21 @@ function WorkspaceContent({ slug }: { slug: string }) {
                 Assessment
               </span>
             )}
+            {isDockerAvailable ? (
+              <span
+                className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-medium border bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                title="Grading runs inside isolated Docker containers with build-time test protection"
+              >
+                🔒 Docker Isolated
+              </span>
+            ) : (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono font-medium border bg-amber-500/15 text-amber-300 border-amber-500/30"
+                title="Docker unavailable — host fallback active"
+              >
+                ⚠️ Native Unisolated
+              </span>
+            )}
           </div>
         </div>
 
@@ -1199,9 +1239,10 @@ function WorkspaceContent({ slug }: { slug: string }) {
           </button>
 
           {/* Submit with inline confidence prompt */}
-          <div className="relative">
+          <div className="relative group">
             <button
               onClick={() => {
+                if (isSubmitBlocked) return;
                 if (!showConfidencePrompt) {
                   setShowConfidencePrompt(true);
                 } else {
@@ -1209,21 +1250,36 @@ function WorkspaceContent({ slug }: { slug: string }) {
                   submitMutation.mutate(selectedConfidence);
                 }
               }}
-              disabled={!activeSession || isRunning || isSubmitting}
+              disabled={!activeSession || isRunning || isSubmitting || isSubmitBlocked}
               className={cn(
                 "px-3.5 py-1.5 rounded-md text-xs font-semibold font-mono transition-colors",
-                "bg-accent text-white",
-                "hover:bg-accent/90",
-                "disabled:opacity-40 disabled:cursor-not-allowed",
+                isSubmitBlocked
+                  ? "bg-surface-2 text-text-secondary border border-border cursor-not-allowed opacity-60"
+                  : "bg-accent text-white hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed",
               )}
+              title={
+                isSubmitBlocked
+                  ? "Submit requires isolated grading in a Docker container, which is unavailable in this environment."
+                  : undefined
+              }
             >
               {isSubmitting ? (
                 <span className="inline-flex items-center gap-1.5">
                   <span className="inline-block h-3 w-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                   Submitting...
                 </span>
-              ) : "Submit"}
+              ) : isSubmitBlocked ? (
+                "Submit (Docker Required)"
+              ) : (
+                "Submit"
+              )}
             </button>
+
+            {isSubmitBlocked && (
+              <div className="absolute right-0 top-full mt-2 hidden group-hover:block z-50 w-72 p-2.5 bg-surface border border-border rounded-lg shadow-xl text-xs font-mono text-text-secondary">
+                Official hidden test grading is blocked because this environment lacks Docker container isolation. Run visible tests or deploy locally with Docker.
+              </div>
+            )}
 
             {/* Inline confidence prompt — optional, not blocking */}
             <AnimatePresence>
@@ -1325,6 +1381,26 @@ function WorkspaceContent({ slug }: { slug: string }) {
         )}
       </AnimatePresence>
 
+      {/* ── Mode Indicator Banner (Unmissable when Native-Unisolated) ── */}
+      {!isDockerAvailable && (
+        <div
+          className="w-full bg-amber-500/15 border-b border-amber-500/30 px-4 py-2.5 text-xs font-mono text-amber-200 flex flex-wrap items-center justify-between gap-3 shrink-0"
+          data-testid="native-mode-banner"
+        >
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-amber-400 flex items-center gap-1">
+              ⚠️ NATIVE UNISOLATED EXECUTION:
+            </span>
+            <span>
+              Docker is unavailable on this host. Visible tests run directly in the host process without container sandboxing. Official hidden-test grading (Submit) is strictly blocked to protect evaluation integrity. Run visible tests or deploy locally with Docker.
+            </span>
+          </div>
+          <span className="shrink-0 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/25 text-amber-300 border border-amber-500/40">
+            Submit Disabled
+          </span>
+        </div>
+      )}
+
       {/* ── Two-panel layout ── */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left: Description tabs */}
@@ -1419,6 +1495,7 @@ function WorkspaceContent({ slug }: { slug: string }) {
             <span className="text-[10px] font-mono text-white/80">{starterCode?.filename ?? "src/charge.js"}</span>
             <div className="flex items-center gap-4 text-[10px] font-mono text-white/70">
               <span>{isAssessment ? "Mode: Assessment" : "Mode: Practice"}</span>
+              <span>{isDockerAvailable ? "Runtime: Docker" : "Runtime: Native (Unisolated)"}</span>
               {activeSession && <span title={`Session: ${activeSession.id}`}>Session: {activeSession.id.slice(-8)}</span>}
             </div>
           </div>

@@ -85,6 +85,7 @@ export interface PostmortemDoc {
     }>;
     submittedAt: string;
     diffText: string;            // real unified diff from submission
+    executionMode: "DOCKER" | "NATIVE_UNISOLATED";
   };
 
   // Narrative fields (derived, not LLM)
@@ -367,6 +368,7 @@ function buildPostmortemDoc(session: NonNullable<Awaited<ReturnType<typeof fetch
       checks,
       submittedAt: latestSubmission.createdAt.toISOString(),
       diffText: latestSubmission.diffText,
+      executionMode: (latestSubmission as any).executionMode ?? "DOCKER",
     },
 
     narrative: {

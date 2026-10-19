@@ -45,7 +45,12 @@ async function getClerkUser(userId: string) {
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     // 1. Check if Clerk session is authenticated
-    const auth = getAuth(req);
+    let auth: any = null;
+    try {
+      auth = getAuth(req);
+    } catch {
+      // clerkMiddleware not registered, fallback to JWT Bearer header
+    }
     if (auth && auth.userId) {
       const clerkUser = await getClerkUser(auth.userId);
       const primaryEmailId = clerkUser.primaryEmailAddressId;

@@ -18,6 +18,8 @@ export type SessionMode = "PRACTICE" | "ASSESSMENT";
 
 export type SessionStatus = "ACTIVE" | "SUBMITTED" | "EXPIRED";
 
+export type ExecutionMode = "DOCKER" | "NATIVE_UNISOLATED";
+
 // ── Core entities ─────────────────────────────────────────────────────────────
 
 export interface User {
@@ -82,6 +84,8 @@ export interface Submission {
   diffText: string;
   verdictJson: Verdict;
   score: number;
+  confidencePct?: number | null;
+  executionMode: ExecutionMode;
   createdAt: string;
 }
 

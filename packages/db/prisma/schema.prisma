@@ -43,6 +43,11 @@ enum SessionStatus {
   EXPIRED
 }
 
+enum ExecutionMode {
+  DOCKER
+  NATIVE_UNISOLATED
+}
+
 model User {
   id             String          @id @default(cuid())
   email          String          @unique
@@ -141,6 +146,7 @@ model Submission {
   verdictJson Json     @map("verdict_json")
   score       Float
   confidencePct Int?   @map("confidence_pct")
+  executionMode ExecutionMode @default(DOCKER) @map("execution_mode")
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("submissions")
