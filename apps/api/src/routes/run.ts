@@ -8,6 +8,7 @@ import { createPatch } from "diff";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
+import { gradeStaticTsc } from "../services/staticTscGrader";
 
 const router = Router();
 const execFileAsync = promisify(execFile);
@@ -53,7 +54,7 @@ interface ProblemMeta {
   version: number;
   entryFile: string;
   language: string;
-  testFramework: "jest" | "pytest";
+  testFramework: "jest" | "pytest" | "static-tsc";
   testCommand: string;
   files: Array<{ path: string; editable: boolean; label: string }>;
 }
@@ -67,13 +68,16 @@ function loadProblemMeta(slug: string): ProblemMeta {
     try {
       const raw = fs.readFileSync(metaPath, "utf-8");
       const data = JSON.parse(raw);
+      const framework = data.testFramework ?? "jest";
       return {
         slug: data.slug ?? slug,
         title: data.title ?? "",
         version: data.version ?? 1,
         entryFile: data.entryFile ?? "src/charge.js",
         language: data.language ?? "javascript",
-        testFramework: data.testFramework ?? "jest",
+        testFramework: (framework === "jest" || framework === "pytest" || framework === "static-tsc")
+          ? framework
+          : "jest",
         testCommand: data.testCommand ?? "npx jest --json --no-coverage --forceExit",
         files: data.files ?? [],
       };
@@ -509,6 +513,9 @@ export class IsolationUnavailableError extends Error {
  * Unified Test Execution Dispatcher.
  * Uses Docker sandbox if available; falls back gracefully to native execution for non-isolated runs (e.g. visible tests).
  * When isolated grading is required (Submit / testScope: "all"), native fallback is strictly disabled and throws IsolationUnavailableError.
+ *
+ * For `testFramework: "static-tsc"` problems: skips Docker entirely and delegates to
+ * the static analysis grader. No code is executed; executionMode is "STATIC_ANALYSIS".
  */
 export async function executeRunner(opts: {
   image: string;
@@ -517,7 +524,22 @@ export async function executeRunner(opts: {
   testScope: "visible" | "all";
   extraVolumes?: string[];
   allowNativeFallback?: boolean;
-}): Promise<{ result: Omit<RunResult, "rawOutput" | "durationMs">; rawOutput: string; executionMode: "DOCKER" | "NATIVE_UNISOLATED" }> {
+}): Promise<{ result: Omit<RunResult, "rawOutput" | "durationMs">; rawOutput: string; executionMode: "DOCKER" | "NATIVE_UNISOLATED" | "STATIC_ANALYSIS" }> {
+  const meta = loadProblemMeta(opts.slug);
+
+  // ── Static Analysis path (testFramework: "static-tsc") ──────────────────
+  // No Docker, no native runner, no code execution. Pure tsc + AST analysis.
+  if (meta.testFramework === "static-tsc") {
+    const staticResult = await gradeStaticTsc({
+      candidateCode: opts.candidateCode,
+      slug: opts.slug,
+      testScope: opts.testScope,
+    });
+    const { rawOutput, durationMs: _durationMs, executionMode, ...result } = staticResult;
+    return { result, rawOutput, executionMode };
+  }
+
+  // ── Docker / Native path (jest / pytest problems) ────────────────────────
   const allowNative = opts.allowNativeFallback ?? (opts.testScope === "visible");
   const dockerOk = await isDockerAvailable();
   if (dockerOk) {
@@ -720,21 +742,28 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
     return;
   }
 
-  // Option (a): Submit requires isolated grading in a Docker container.
-  // When Docker is unavailable, immediately reject with HTTP 503 rather than running unisolated.
-  const dockerAvailable = await isDockerAvailable();
-  if (!dockerAvailable) {
-    res.status(503).json({
-      ok: false,
-      error: "SUBMISSION_ISOLATION_UNAVAILABLE",
-      message: "Submit requires isolated grading in a Docker container, which is unavailable in this environment. Run visible tests or run Heisenbug locally with Docker.",
-      executionMode: "NATIVE_UNISOLATED",
-    });
-    return;
-  }
-
   const slug = session.version?.problem?.slug ?? "be-idempotency-001";
   const meta = loadProblemMeta(slug);
+
+  // ── Static Analysis path: no Docker gate, no isolation check ──────────────
+  // Problems with testFramework: "static-tsc" never execute code and are safe
+  // to grade directly on the host. Skip the Docker pre-flight entirely.
+  const isStaticAnalysis = meta.testFramework === "static-tsc";
+
+  if (!isStaticAnalysis) {
+    // Option (a): Submit requires isolated grading in a Docker container.
+    // When Docker is unavailable, immediately reject with HTTP 503 rather than running unisolated.
+    const dockerAvailable = await isDockerAvailable();
+    if (!dockerAvailable) {
+      res.status(503).json({
+        ok: false,
+        error: "SUBMISSION_ISOLATION_UNAVAILABLE",
+        message: "Submit requires isolated grading in a Docker container, which is unavailable in this environment. Run visible tests or run Heisenbug locally with Docker.",
+        executionMode: "NATIVE_UNISOLATED",
+      });
+      return;
+    }
+  }
 
   let candidateCode: string;
   try {
@@ -744,25 +773,27 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
     return;
   }
 
-  // Hidden tests path on the HOST
-  const hiddenTestsHostPath = path.join(PROBLEMS_ROOT, slug, "tests", "hidden");
-  if (!fs.existsSync(hiddenTestsHostPath)) {
-    res.status(500).json({ ok: false, error: `Hidden tests not found for '${slug}'` });
-    return;
+  if (!isStaticAnalysis) {
+    // Hidden tests path on the HOST
+    const hiddenTestsHostPath = path.join(PROBLEMS_ROOT, slug, "tests", "hidden");
+    if (!fs.existsSync(hiddenTestsHostPath)) {
+      res.status(500).json({ ok: false, error: `Hidden tests not found for '${slug}'` });
+      return;
+    }
   }
 
   const t0 = Date.now();
 
   try {
-    const { result, rawOutput } = await executeRunner({
+    const { result, rawOutput, executionMode } = await executeRunner({
       image: graderImage(slug),
       candidateCode,
       slug,
       testScope: "all",
       allowNativeFallback: false,
-      extraVolumes: [
-        `${hiddenTestsHostPath}:/app/tests/hidden:ro`,
-      ],
+      extraVolumes: isStaticAnalysis
+        ? []
+        : [`${path.join(PROBLEMS_ROOT, slug, "tests", "hidden")}:/app/tests/hidden:ro`],
     });
 
     const durationMs = Date.now() - t0;
@@ -770,7 +801,7 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
       passed: result.passed,
       score:  result.score,
       checks: result.checks,
-      executionMode: "DOCKER" as const,
+      executionMode,
     };
 
     // Compute real unified diff using meta.entryFile
@@ -794,6 +825,12 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
         ? Math.max(0, Math.min(100, Math.round(Number(rawConfidence))))
         : null;
 
+    // Map executionMode string to the Prisma enum value
+    const dbExecutionMode: "DOCKER" | "NATIVE_UNISOLATED" | "STATIC_ANALYSIS" =
+      executionMode === "STATIC_ANALYSIS" ? "STATIC_ANALYSIS"
+      : executionMode === "NATIVE_UNISOLATED" ? "NATIVE_UNISOLATED"
+      : "DOCKER";
+
     // Save Submission row to Postgres, record SUBMIT event, and mark session as SUBMITTED
     const [submission] = await prisma.$transaction([
       prisma.submission.create({
@@ -803,7 +840,7 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
           diffText,
           score: result.score,
           confidencePct: parsedConfidence,
-          executionMode: "DOCKER",
+          executionMode: dbExecutionMode,
         },
       }),
       prisma.session.update({
@@ -821,7 +858,7 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
             checks: result.checks,
             durationMs,
             confidencePct: parsedConfidence,
-            executionMode: "DOCKER",
+            executionMode,
           } as unknown as Prisma.InputJsonObject,
         },
       }),
@@ -834,7 +871,7 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
         verdict: verdictJson,
         rawOutput,
         durationMs,
-        executionMode: "DOCKER",
+        executionMode,
       },
     });
   } catch (err: any) {

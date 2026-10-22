@@ -46,6 +46,7 @@ enum SessionStatus {
 enum ExecutionMode {
   DOCKER
   NATIVE_UNISOLATED
+  STATIC_ANALYSIS
 }
 
 model User {

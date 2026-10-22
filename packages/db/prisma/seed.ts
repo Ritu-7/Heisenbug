@@ -593,6 +593,73 @@ async function main() {
     },
   });
   console.log(`  ✓ Variant:        ${variant5.id}`);
+  // ── Seed problem 6: ts-unsound-cast-001 ──────────────────────────────────
+  const problem6 = await prisma.problem.upsert({
+    where: { slug: "ts-unsound-cast-001" },
+    update: {},
+    create: {
+      slug: "ts-unsound-cast-001",
+      title: "Unsound type assertion silently breaks at runtime",
+      track: "type-safety",
+      difficulty: "easy",
+      estMinutes: 20,
+      skills: ["typescript", "type-safety", "static-analysis"],
+      stack: "typescript",
+    },
+  });
+  console.log(`  ✓ Problem: ${problem6.id} (${problem6.slug})`);
+
+  const descriptionMdStaticTsc = fs.readFileSync(
+    require("path").join(__dirname, "../../problems/ts-unsound-cast-001/DESCRIPTION.md"),
+    "utf-8"
+  );
+
+  const existingVersion6 = await prisma.problemVersion.findUnique({
+    where: { problemId_version: { problemId: problem6.id, version: 1 } },
+  });
+
+  const editorialMd6 = loadProblemDoc("ts-unsound-cast-001", "EDITORIAL.md");
+  const solutionMd6 = loadProblemDoc("ts-unsound-cast-001", "SOLUTION.md");
+
+  let version6;
+  if (existingVersion6) {
+    version6 = await prisma.problemVersion.update({
+      where: { id: existingVersion6.id },
+      data: {
+        status: "PUBLISHED",
+        descriptionMd: descriptionMdStaticTsc,
+        editorialMd: editorialMd6,
+        solutionMd: solutionMd6,
+      },
+    });
+  } else {
+    version6 = await prisma.problemVersion.create({
+      data: {
+        problemId: problem6.id,
+        version: 1,
+        status: "PUBLISHED",
+        descriptionMd: descriptionMdStaticTsc,
+        editorialMd: editorialMd6,
+        solutionMd: solutionMd6,
+      },
+    });
+  }
+  console.log(`  ✓ ProblemVersion: ${version6.id} (v${version6.version}, ${version6.status})`);
+
+  const variantId6 = `${version6.id}_default`;
+  const variant6 = await prisma.variant.upsert({
+    where: { id: variantId6 },
+    update: {},
+    create: {
+      id: variantId6,
+      versionId: version6.id,
+      paramsJson: {
+        variant: "default",
+      },
+    },
+  });
+  console.log(`  ✓ Variant:        ${variant6.id}`);
+
 
   console.log("\n✅ Seed complete.");
   console.log("\n📋 Test credentials:");

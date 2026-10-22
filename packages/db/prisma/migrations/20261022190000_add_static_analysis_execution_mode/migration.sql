@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "ExecutionMode" ADD VALUE 'STATIC_ANALYSIS';

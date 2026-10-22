@@ -1,0 +1,42 @@
+{
+  "slug": "ts-unsound-cast-001",
+  "title": "Unsound type assertion silently breaks at runtime",
+  "version": 1,
+  "entryFile": "src/userLoader.ts",
+  "language": "typescript",
+  "testFramework": "static-tsc",
+  "testCommand": "static-tsc",
+  "files": [
+    { "path": "src/userLoader.ts", "editable": true, "label": "user loader" }
+  ],
+  "hints": [
+    {
+      "index": 1,
+      "title": "Where to look",
+      "body": "Open `src/userLoader.ts` and find the `loadUser` function. Notice the line `const user = data as User`. TypeScript accepts this without complaint, but it is a *lie* to the compiler — it asserts that whatever came back from the API is definitely a `User`, without verifying a single field. If the API returns `null`, `{}`, or an object with a missing `email`, the next line `user.email.toLowerCase()` will throw a `TypeError` at runtime."
+    },
+    {
+      "index": 2,
+      "title": "The concept",
+      "body": "This is an **unsound type assertion** (sometimes called an \"unsafe cast\"). TypeScript's `as T` keyword tells the compiler to *trust you* — it performs zero runtime validation. Type safety in TypeScript is only as strong as the validation you do at the boundary where `unknown`/external data enters your program. The correct fix is a **type guard**: a function that accepts `unknown` and returns `data is User`, checking every required field at runtime before the cast is made."
+    },
+    {
+      "index": 3,
+      "title": "The fix approach",
+      "body": "Write a type guard function:\n```typescript\nfunction isUser(data: unknown): data is User {\n  return (\n    typeof data === 'object' &&\n    data !== null &&\n    typeof (data as Record<string, unknown>).id === 'string' &&\n    typeof (data as Record<string, unknown>).email === 'string' &&\n    typeof (data as Record<string, unknown>).name === 'string'\n  );\n}\n```\nThen in `loadUser`, replace the bare `as User` with:\n```typescript\nif (!isUser(data)) throw new Error('API returned invalid user shape');\nconst user = data;  // now narrowed to User by the guard\n```\nThis way, malformed API responses are caught immediately with a clear error, instead of a confusing `TypeError` several lines later."
+    }
+  ],
+  "badPatches": [
+    {
+      "id": "try_catch_cast",
+      "file": "try_catch_cast.ts",
+      "explanationFile": "try_catch_cast.md",
+      "title": "try/catch around the unsound cast",
+      "measuredScore": 20,
+      "maxScore": 100,
+      "summary": "20/100 — passes V1 (compiles), fails V2 (strict), fails H1 (strict mode errors), fails H2 (still has bare `as User` cast)",
+      "failedChecks": ["V2", "H1", "H2"],
+      "passedChecks": ["V1"]
+    }
+  ]
+}
