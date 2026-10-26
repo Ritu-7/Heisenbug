@@ -9,6 +9,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { gradeStaticTsc } from "../services/staticTscGrader";
+import { gradeStaticMypy } from "../services/staticMypyGrader";
 
 const router = Router();
 const execFileAsync = promisify(execFile);
@@ -54,7 +55,7 @@ interface ProblemMeta {
   version: number;
   entryFile: string;
   language: string;
-  testFramework: "jest" | "pytest" | "static-tsc";
+  testFramework: "jest" | "pytest" | "static-tsc" | "static-mypy";
   testCommand: string;
   files: Array<{ path: string; editable: boolean; label: string }>;
 }
@@ -75,7 +76,7 @@ function loadProblemMeta(slug: string): ProblemMeta {
         version: data.version ?? 1,
         entryFile: data.entryFile ?? "src/charge.js",
         language: data.language ?? "javascript",
-        testFramework: (framework === "jest" || framework === "pytest" || framework === "static-tsc")
+        testFramework: (framework === "jest" || framework === "pytest" || framework === "static-tsc" || framework === "static-mypy")
           ? framework
           : "jest",
         testCommand: data.testCommand ?? "npx jest --json --no-coverage --forceExit",
@@ -539,6 +540,20 @@ export async function executeRunner(opts: {
     return { result, rawOutput, executionMode };
   }
 
+  // ── Static Analysis path (testFramework: "static-mypy") ──────────────────
+  // No Docker, no native runner, no code execution.
+  // Runs real mypy (strict + non-strict) and the problem's bundled
+  // ast_null_check.py for AST-level guard-before-access verification.
+  if (meta.testFramework === "static-mypy") {
+    const staticResult = await gradeStaticMypy({
+      candidateCode: opts.candidateCode,
+      slug: opts.slug,
+      testScope: opts.testScope,
+    });
+    const { rawOutput, durationMs: _durationMsMypy, executionMode, ...result } = staticResult;
+    return { result, rawOutput, executionMode };
+  }
+
   // ── Docker / Native path (jest / pytest problems) ────────────────────────
   const allowNative = opts.allowNativeFallback ?? (opts.testScope === "visible");
   const dockerOk = await isDockerAvailable();
@@ -746,9 +761,9 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
   const meta = loadProblemMeta(slug);
 
   // ── Static Analysis path: no Docker gate, no isolation check ──────────────
-  // Problems with testFramework: "static-tsc" never execute code and are safe
-  // to grade directly on the host. Skip the Docker pre-flight entirely.
-  const isStaticAnalysis = meta.testFramework === "static-tsc";
+  // Problems with testFramework: "static-tsc" or "static-mypy" never execute
+  // code and are safe to grade directly on the host. Skip the Docker pre-flight entirely.
+  const isStaticAnalysis = meta.testFramework === "static-tsc" || meta.testFramework === "static-mypy";
 
   if (!isStaticAnalysis) {
     // Option (a): Submit requires isolated grading in a Docker container.

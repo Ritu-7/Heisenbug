@@ -660,6 +660,73 @@ async function main() {
   });
   console.log(`  ✓ Variant:        ${variant6.id}`);
 
+  // ── Seed problem 7: py-missing-null-check-001 ────────────────────────────
+  const problem7 = await prisma.problem.upsert({
+    where: { slug: "py-missing-null-check-001" },
+    update: {},
+    create: {
+      slug: "py-missing-null-check-001",
+      title: "Optional return silently causes AttributeError at runtime",
+      track: "type-safety",
+      difficulty: "easy",
+      estMinutes: 15,
+      skills: ["python", "type-hints", "static-analysis"],
+      stack: "python",
+    },
+  });
+  console.log(`  ✓ Problem: ${problem7.id} (${problem7.slug})`);
+
+  const descriptionMdStaticMypy = fs.readFileSync(
+    require("path").join(__dirname, "../../problems/py-missing-null-check-001/DESCRIPTION.md"),
+    "utf-8"
+  );
+
+  const existingVersion7 = await prisma.problemVersion.findUnique({
+    where: { problemId_version: { problemId: problem7.id, version: 1 } },
+  });
+
+  const editorialMd7 = loadProblemDoc("py-missing-null-check-001", "EDITORIAL.md");
+  const solutionMd7 = loadProblemDoc("py-missing-null-check-001", "SOLUTION.md");
+
+  let version7;
+  if (existingVersion7) {
+    version7 = await prisma.problemVersion.update({
+      where: { id: existingVersion7.id },
+      data: {
+        status: "PUBLISHED",
+        descriptionMd: descriptionMdStaticMypy,
+        editorialMd: editorialMd7,
+        solutionMd: solutionMd7,
+      },
+    });
+  } else {
+    version7 = await prisma.problemVersion.create({
+      data: {
+        problemId: problem7.id,
+        version: 1,
+        status: "PUBLISHED",
+        descriptionMd: descriptionMdStaticMypy,
+        editorialMd: editorialMd7,
+        solutionMd: solutionMd7,
+      },
+    });
+  }
+  console.log(`  ✓ ProblemVersion: ${version7.id} (v${version7.version}, ${version7.status})`);
+
+  const variantId7 = `${version7.id}_default`;
+  const variant7 = await prisma.variant.upsert({
+    where: { id: variantId7 },
+    update: {},
+    create: {
+      id: variantId7,
+      versionId: version7.id,
+      paramsJson: {
+        variant: "default",
+      },
+    },
+  });
+  console.log(`  ✓ Variant:        ${variant7.id}`);
+
 
   console.log("\n✅ Seed complete.");
   console.log("\n📋 Test credentials:");

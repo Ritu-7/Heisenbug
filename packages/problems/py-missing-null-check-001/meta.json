@@ -1,0 +1,42 @@
+{
+  "slug": "py-missing-null-check-001",
+  "title": "Optional return silently causes AttributeError at runtime",
+  "version": 1,
+  "entryFile": "src/user_service.py",
+  "language": "python",
+  "testFramework": "static-mypy",
+  "testCommand": "static-mypy",
+  "files": [
+    { "path": "src/user_service.py", "editable": true, "label": "user service" }
+  ],
+  "hints": [
+    {
+      "index": 1,
+      "title": "Where to look",
+      "body": "Open `src/user_service.py` and find the `get_user_email` function. Notice that `users.get(user_id)` returns `Optional[User]` — it can return `None` if the key is absent. But the very next line does `user.email` without any check. If `user_id` is not in the dict, this raises `AttributeError: 'NoneType' object has no attribute 'email'` at runtime."
+    },
+    {
+      "index": 2,
+      "title": "The concept",
+      "body": "This is a **missing None check** (also called a null-safety bug). Python's `dict.get()` returns `Optional[T]` — the type hint tells you it can be `None`. The function signature says it returns `str`, which mypy enforces. When mypy runs in `--strict` mode it will flag `user.email` as an error because `user` is `Optional[User]`, not `User`. The fix is to explicitly handle the `None` case **before** accessing the attribute — either with `if user is None: raise ...` or with an `assert user is not None`."
+    },
+    {
+      "index": 3,
+      "title": "The fix approach",
+      "body": "Add an explicit guard immediately after the `.get()` call:\n```python\ndef get_user_email(user_id: str) -> str:\n    user = users.get(user_id)   # Optional[User]\n    if user is None:\n        raise KeyError(f\"User '{user_id}' not found\")\n    return user.email            # Safe: mypy knows user is User here\n```\nThis makes the intent explicit, gives callers a clear `KeyError` with a useful message instead of a confusing `AttributeError: 'NoneType'`, and satisfies mypy strict mode. Alternatively, you could raise `ValueError`, or use `assert user is not None, ...` — any pattern that guards the `None` case before the attribute access."
+    }
+  ],
+  "badPatches": [
+    {
+      "id": "bare_except_swallow",
+      "file": "bare_except_swallow.py",
+      "explanationFile": "bare_except_swallow.md",
+      "title": "bare except: pass swallows the error without fixing the root cause",
+      "measuredScore": 20,
+      "maxScore": 100,
+      "summary": "20/100 — passes V1 (syntax ok), fails V2 (mypy strict), fails H1 (mypy strict errors), fails H2 (attribute access still happens before any guard)",
+      "failedChecks": ["V2", "H1", "H2"],
+      "passedChecks": ["V1"]
+    }
+  ]
+}
