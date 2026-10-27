@@ -556,17 +556,10 @@ export async function executeRunner(opts: {
   }
 
   // ── Transparent VM path (testFramework: "transparent-vm") ────────────────
-  // Code executes inside Node's vm module — no Docker, no hidden tier.
-  // All tests are fully visible. executionMode: "TRANSPARENT_VM".
-  // process, require, fs, and network are not available inside the sandbox.
+  // CRITICAL SECURITY HOLD: VM sandbox escape vulnerability.
+  // Immediately disabled — never invoke gradeTransparentVm until remediated.
   if (meta.testFramework === "transparent-vm") {
-    const vmResult = await gradeTransparentVm({
-      candidateCode: opts.candidateCode,
-      slug: opts.slug,
-      testScope: opts.testScope,
-    });
-    const { rawOutput, durationMs: _durationMsVm, executionMode, ...result } = vmResult;
-    return { result, rawOutput, executionMode };
+    throw new Error("This execution mode is temporarily disabled.");
   }
 
   // ── Docker / Native path (jest / pytest problems) ────────────────────────
@@ -667,6 +660,16 @@ router.post("/:id/run", requireAuth, async (req: Request<{ id: string }>, res: R
   }
 
   const slug = session.version?.problem?.slug ?? "be-idempotency-001";
+  const meta = loadProblemMeta(slug);
+
+  if (meta.testFramework === "transparent-vm") {
+    res.status(503).json({
+      ok: false,
+      error: "FRAMEWORK_TEMPORARILY_DISABLED",
+      message: "This execution mode is temporarily disabled.",
+    });
+    return;
+  }
 
   let candidateCode: string;
   try {
@@ -775,13 +778,20 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
   const slug = session.version?.problem?.slug ?? "be-idempotency-001";
   const meta = loadProblemMeta(slug);
 
-  // ── No-Docker path: static-analysis and transparent-vm problems ──────────
+  if (meta.testFramework === "transparent-vm") {
+    res.status(503).json({
+      ok: false,
+      error: "FRAMEWORK_TEMPORARILY_DISABLED",
+      message: "This execution mode is temporarily disabled.",
+    });
+    return;
+  }
+
+  // ── No-Docker path: static-analysis problems ─────────────────────────────
   // "static-tsc", "static-mypy": never execute code.
-  // "transparent-vm": executes code in Node vm sandbox, no Docker needed.
-  // All three skip the Docker pre-flight and submit works on Render.
+  // Both skip the Docker pre-flight and submit works on Render.
   const isNoDockerNeeded = meta.testFramework === "static-tsc"
-    || meta.testFramework === "static-mypy"
-    || meta.testFramework === "transparent-vm";
+    || meta.testFramework === "static-mypy";
 
   // Keep the variable name isStaticAnalysis for backwards-compat use below
   const isStaticAnalysis = isNoDockerNeeded;
