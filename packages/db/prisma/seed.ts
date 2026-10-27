@@ -727,6 +727,73 @@ async function main() {
   });
   console.log(`  ✓ Variant:        ${variant7.id}`);
 
+  // ── Seed problem 8: algo-lru-cache-001 ───────────────────────────────────
+  const problem8 = await prisma.problem.upsert({
+    where: { slug: "algo-lru-cache-001" },
+    update: {},
+    create: {
+      slug: "algo-lru-cache-001",
+      title: "LRU Cache: O(1) get and put with correct eviction order",
+      track: "algorithms",
+      difficulty: "medium",
+      estMinutes: 25,
+      skills: ["data-structures", "algorithms"],
+      stack: "javascript",
+    },
+  });
+  console.log(`  ✓ Problem: ${problem8.id} (${problem8.slug})`);
+
+  const descriptionMdTransparentVm = fs.readFileSync(
+    require("path").join(__dirname, "../../problems/algo-lru-cache-001/DESCRIPTION.md"),
+    "utf-8"
+  );
+
+  const existingVersion8 = await prisma.problemVersion.findUnique({
+    where: { problemId_version: { problemId: problem8.id, version: 1 } },
+  });
+
+  const editorialMd8 = loadProblemDoc("algo-lru-cache-001", "EDITORIAL.md");
+  const solutionMd8 = loadProblemDoc("algo-lru-cache-001", "SOLUTION.md");
+
+  let version8;
+  if (existingVersion8) {
+    version8 = await prisma.problemVersion.update({
+      where: { id: existingVersion8.id },
+      data: {
+        status: "PUBLISHED",
+        descriptionMd: descriptionMdTransparentVm,
+        editorialMd: editorialMd8,
+        solutionMd: solutionMd8,
+      },
+    });
+  } else {
+    version8 = await prisma.problemVersion.create({
+      data: {
+        problemId: problem8.id,
+        version: 1,
+        status: "PUBLISHED",
+        descriptionMd: descriptionMdTransparentVm,
+        editorialMd: editorialMd8,
+        solutionMd: solutionMd8,
+      },
+    });
+  }
+  console.log(`  ✓ ProblemVersion: ${version8.id} (v${version8.version}, ${version8.status})`);
+
+  const variantId8 = `${version8.id}_default`;
+  const variant8 = await prisma.variant.upsert({
+    where: { id: variantId8 },
+    update: {},
+    create: {
+      id: variantId8,
+      versionId: version8.id,
+      paramsJson: {
+        variant: "default",
+      },
+    },
+  });
+  console.log(`  ✓ Variant:        ${variant8.id}`);
+
 
   console.log("\n✅ Seed complete.");
   console.log("\n📋 Test credentials:");

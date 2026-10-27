@@ -10,6 +10,7 @@ import { prisma } from "../lib/prisma";
 import { requireAuth } from "../middleware/auth";
 import { gradeStaticTsc } from "../services/staticTscGrader";
 import { gradeStaticMypy } from "../services/staticMypyGrader";
+import { gradeTransparentVm } from "../services/transparentVmGrader";
 
 const router = Router();
 const execFileAsync = promisify(execFile);
@@ -55,7 +56,7 @@ interface ProblemMeta {
   version: number;
   entryFile: string;
   language: string;
-  testFramework: "jest" | "pytest" | "static-tsc" | "static-mypy";
+  testFramework: "jest" | "pytest" | "static-tsc" | "static-mypy" | "transparent-vm";
   testCommand: string;
   files: Array<{ path: string; editable: boolean; label: string }>;
 }
@@ -76,7 +77,7 @@ function loadProblemMeta(slug: string): ProblemMeta {
         version: data.version ?? 1,
         entryFile: data.entryFile ?? "src/charge.js",
         language: data.language ?? "javascript",
-        testFramework: (framework === "jest" || framework === "pytest" || framework === "static-tsc" || framework === "static-mypy")
+        testFramework: (framework === "jest" || framework === "pytest" || framework === "static-tsc" || framework === "static-mypy" || framework === "transparent-vm")
           ? framework
           : "jest",
         testCommand: data.testCommand ?? "npx jest --json --no-coverage --forceExit",
@@ -525,7 +526,7 @@ export async function executeRunner(opts: {
   testScope: "visible" | "all";
   extraVolumes?: string[];
   allowNativeFallback?: boolean;
-}): Promise<{ result: Omit<RunResult, "rawOutput" | "durationMs">; rawOutput: string; executionMode: "DOCKER" | "NATIVE_UNISOLATED" | "STATIC_ANALYSIS" }> {
+}): Promise<{ result: Omit<RunResult, "rawOutput" | "durationMs">; rawOutput: string; executionMode: "DOCKER" | "NATIVE_UNISOLATED" | "STATIC_ANALYSIS" | "TRANSPARENT_VM" }> {
   const meta = loadProblemMeta(opts.slug);
 
   // ── Static Analysis path (testFramework: "static-tsc") ──────────────────
@@ -551,6 +552,20 @@ export async function executeRunner(opts: {
       testScope: opts.testScope,
     });
     const { rawOutput, durationMs: _durationMsMypy, executionMode, ...result } = staticResult;
+    return { result, rawOutput, executionMode };
+  }
+
+  // ── Transparent VM path (testFramework: "transparent-vm") ────────────────
+  // Code executes inside Node's vm module — no Docker, no hidden tier.
+  // All tests are fully visible. executionMode: "TRANSPARENT_VM".
+  // process, require, fs, and network are not available inside the sandbox.
+  if (meta.testFramework === "transparent-vm") {
+    const vmResult = await gradeTransparentVm({
+      candidateCode: opts.candidateCode,
+      slug: opts.slug,
+      testScope: opts.testScope,
+    });
+    const { rawOutput, durationMs: _durationMsVm, executionMode, ...result } = vmResult;
     return { result, rawOutput, executionMode };
   }
 
@@ -760,10 +775,16 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
   const slug = session.version?.problem?.slug ?? "be-idempotency-001";
   const meta = loadProblemMeta(slug);
 
-  // ── Static Analysis path: no Docker gate, no isolation check ──────────────
-  // Problems with testFramework: "static-tsc" or "static-mypy" never execute
-  // code and are safe to grade directly on the host. Skip the Docker pre-flight entirely.
-  const isStaticAnalysis = meta.testFramework === "static-tsc" || meta.testFramework === "static-mypy";
+  // ── No-Docker path: static-analysis and transparent-vm problems ──────────
+  // "static-tsc", "static-mypy": never execute code.
+  // "transparent-vm": executes code in Node vm sandbox, no Docker needed.
+  // All three skip the Docker pre-flight and submit works on Render.
+  const isNoDockerNeeded = meta.testFramework === "static-tsc"
+    || meta.testFramework === "static-mypy"
+    || meta.testFramework === "transparent-vm";
+
+  // Keep the variable name isStaticAnalysis for backwards-compat use below
+  const isStaticAnalysis = isNoDockerNeeded;
 
   if (!isStaticAnalysis) {
     // Option (a): Submit requires isolated grading in a Docker container.
@@ -841,8 +862,9 @@ router.post("/:id/submit", requireAuth, async (req: Request<{ id: string }>, res
         : null;
 
     // Map executionMode string to the Prisma enum value
-    const dbExecutionMode: "DOCKER" | "NATIVE_UNISOLATED" | "STATIC_ANALYSIS" =
+    const dbExecutionMode: "DOCKER" | "NATIVE_UNISOLATED" | "STATIC_ANALYSIS" | "TRANSPARENT_VM" =
       executionMode === "STATIC_ANALYSIS" ? "STATIC_ANALYSIS"
+      : executionMode === "TRANSPARENT_VM" ? "TRANSPARENT_VM"
       : executionMode === "NATIVE_UNISOLATED" ? "NATIVE_UNISOLATED"
       : "DOCKER";
 

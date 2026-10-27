@@ -1,0 +1,45 @@
+{
+  "slug": "algo-lru-cache-001",
+  "title": "LRU Cache: O(1) get and put with correct eviction order",
+  "version": 1,
+  "entryFile": "src/lru_cache.js",
+  "language": "javascript",
+  "testFramework": "transparent-vm",
+  "testCommand": "transparent-vm",
+  "transparentTests": true,
+  "noHiddenTier": true,
+  "noHiddenTierReason": "This problem has no hidden test tier by design, not as an oversight. All test cases are fully visible to the candidate from the start. Grading uses Node's vm module sandbox — code executes but cannot access process, require, fs, or network.",
+  "files": [
+    { "path": "src/lru_cache.js", "editable": true, "label": "LRU cache" }
+  ],
+  "hints": [
+    {
+      "index": 1,
+      "title": "The data structure you need",
+      "body": "An LRU cache with O(1) `get` and `put` requires two data structures working together: a **HashMap** (for O(1) lookup by key) and a **Doubly-Linked List** (for O(1) move-to-front and remove-from-tail). A `Map` in JavaScript preserves insertion order and supports O(1) get/set/delete — you can use it as both the hashmap and an ordered structure. The trick: on every `get` or `put`, delete the key and re-insert it so it becomes the most-recently-used (Map preserves insertion order, so the first entry is always the LRU)."
+    },
+    {
+      "index": 2,
+      "title": "The eviction rule — get counts as a use",
+      "body": "A **get** must also count as a recent use. If you call `cache.get(1)` on a key that exists, key `1` becomes the most-recently-used. If the cache later overflows, key `1` should be the LAST to be evicted — not the first. The classic near-miss bug is treating put-order as use-order: if your `get` doesn't re-insert the key, the cache evicts by insertion order instead of access order. Test case V5 (`get promotes existing key`) is specifically designed to catch this."
+    },
+    {
+      "index": 3,
+      "title": "Skeleton approach",
+      "body": "```javascript\nclass LRUCache {\n  constructor(capacity) {\n    this.capacity = capacity;\n    this.cache = new Map();\n  }\n  get(key) {\n    if (!this.cache.has(key)) return -1;\n    const val = this.cache.get(key);\n    // Promote to most-recently-used:\n    this.cache.delete(key);\n    this.cache.set(key, val);\n    return val;\n  }\n  put(key, value) {\n    if (this.cache.has(key)) this.cache.delete(key);\n    this.cache.set(key, value);\n    if (this.cache.size > this.capacity) {\n      // Map.keys().next().value is the LEAST recently used\n      this.cache.delete(this.cache.keys().next().value);\n    }\n  }\n}\n```"
+    }
+  ],
+  "badPatches": [
+    {
+      "id": "insertion_order_eviction",
+      "file": "insertion_order_eviction.js",
+      "explanationFile": "insertion_order_eviction.md",
+      "title": "Evicts by insertion order, not access order — get() doesn't promote",
+      "measuredScore": 60,
+      "maxScore": 100,
+      "summary": "60/100 — passes basic get/put, updates, and capacity-1 tests, fails all access-order (LRU promotion) tests",
+      "failedChecks": ["V5", "V6", "V7", "V10"],
+      "passedChecks": ["V1", "V2", "V3", "V4", "V8", "V9"]
+    }
+  ]
+}

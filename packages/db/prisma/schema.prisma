@@ -47,6 +47,7 @@ enum ExecutionMode {
   DOCKER
   NATIVE_UNISOLATED
   STATIC_ANALYSIS
+  TRANSPARENT_VM
 }
 
 model User {
